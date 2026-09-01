@@ -7,6 +7,10 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 
 public class Commands implements CommandExecutor {
 
@@ -22,6 +26,35 @@ public class Commands implements CommandExecutor {
         Player player = (Player) sender;
         GameManager gm = plugin.getGameManager();
         String cmdName = command.getName().toLowerCase();
+
+        // NUOVO COMANDO: /fly
+        if (cmdName.equals("fly")) {
+            if (player.hasPermission("speedbuilders.fly")) {
+                boolean isFlying = player.getAllowFlight();
+                player.setAllowFlight(!isFlying);
+                player.setFlying(!isFlying);
+                player.sendMessage("§eVolo " + (!isFlying ? "§aattivato" : "§cdisattivato") + "§e.");
+            } else {
+                player.sendMessage("§cNon hai il permesso per volare.");
+            }
+            return true;
+        }
+
+        // NUOVO COMANDO: /dj (Attiva/Disattiva il Double Jump)
+        if (cmdName.equals("dj")) {
+            if (plugin.getGameManager().getState(player).equals("PLAYING")) {
+                player.sendMessage("§cNon puoi usare il Double Jump mentre giochi!");
+                return true;
+            }
+            boolean djState = !plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false);
+            plugin.getConfig().set("players." + player.getUniqueId() + ".dj", djState);
+            plugin.saveConfig();
+            player.sendMessage("§eDouble Jump " + (djState ? "§aattivato" : "§cdisattivato") + "§e.");
+
+            // Per permettere subito il salto
+            if (djState) player.setAllowFlight(true);
+            return true;
+        }
 
         if (cmdName.equals("practice") || cmdName.equals("p")) {
 
@@ -65,13 +98,41 @@ public class Commands implements CommandExecutor {
             return true;
         }
 
+        // AGGIORNAMENTO: /map (Menu di aiuto migliorato e testo cliccabile)
         if (cmdName.equals("map")) {
-            if (!player.hasPermission("speedbuilders.admin")) {
-                player.sendMessage("§cNon hai i permessi.");
+            if (args.length == 0) {
+                player.sendMessage("§8§m--------------------------------");
+                player.sendMessage("§6§lGestione Mappe - SpeedBuilders");
+                player.sendMessage("§e/map setup §7- Genera l'arena base.");
+                player.sendMessage("§e/map create <nome> §7- Salva i blocchi che hai piazzato in una nuova build.");
+                player.sendMessage("§e/map load <id> §7- Carica una build salvata nell'arena per testarla.");
+                player.sendMessage("§e/map list §7- Mostra l'ID e il nome di tutte le build salvate.");
+                player.sendMessage("§e/map delete <id> §7- Elimina una build dal database.");
+                player.sendMessage("§8§m--------------------------------");
                 return true;
             }
-            if (args.length == 0) {
-                player.sendMessage("§cUsa: /map <save|load|update|rename|delete|setup|setlobby>");
+
+            if (args[0].equalsIgnoreCase("delete") && args.length == 2) {
+                int buildId;
+                try { buildId = Integer.parseInt(args[1]); } catch (Exception e) {
+                    player.sendMessage("§cID non valido."); return true;
+                }
+
+                if (!plugin.getConfig().contains("builds." + buildId)) {
+                    player.sendMessage("§cLa build con ID " + buildId + " non esiste.");
+                    return true;
+                }
+
+                plugin.getGameManager().setPendingDelete(player, buildId);
+
+                // Generazione del testo cliccabile
+                TextComponent warning = new TextComponent("§cStai per eliminare la build ID " + buildId + ". ");
+                TextComponent clickBtn = new TextComponent("§4§l[CLICCA QUI PER CONFERMARE]");
+                clickBtn.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/map confirm"));
+                clickBtn.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§7Clicca per eliminare definitivamente").create()));
+
+                warning.addExtra(clickBtn);
+                player.spigot().sendMessage(warning);
                 return true;
             }
 
@@ -139,6 +200,22 @@ public class Commands implements CommandExecutor {
                         gm.setPendingDelete(player, id);
                         player.sendMessage("§cStai per eliminare l'ID " + id + ". Scrivi §l/map confirm");
                     } catch (Exception e) { player.sendMessage("§cID invalido!"); }
+                    break;
+                case "setholo":
+                    plugin.getConfig().set("locations.hologram", player.getLocation().add(0, 2, 0));
+                    plugin.saveConfig();
+                    plugin.getHologramManager().spawnOrUpdate();
+                    player.sendMessage("§aOlogramma della Top 10 posizionato in aria!");
+                    break;
+                case "setexit":
+                    if (!player.isOp()) return true;
+                    org.bukkit.entity.Villager npc = (org.bukkit.entity.Villager) player.getWorld().spawnEntity(player.getLocation(), org.bukkit.entity.EntityType.VILLAGER);
+                    npc.setCustomName("§c§lExit");
+                    npc.setCustomNameVisible(true);
+                    npc.setAI(false); // Disattiva l'intelligenza artificiale (non si muove)
+                    npc.setInvulnerable(true); // Lo rende immortale
+                    npc.setCollidable(false); // Disattiva le collisioni (non può essere spinto)
+                    player.sendMessage("§aNPC Exit creato alla tua posizione!");
                     break;
                 default:
                     player.sendMessage("§cUsa: /map <save|load|update|rename|delete|setup|setlobby>");

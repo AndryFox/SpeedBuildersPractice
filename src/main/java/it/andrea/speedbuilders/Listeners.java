@@ -1,9 +1,6 @@
 package it.andrea.speedbuilders;
 
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.Sound;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
@@ -41,12 +38,133 @@ public class Listeners implements Listener {
         Player player = event.getPlayer();
         plugin.getGameManager().setState(player, "IDLE");
         player.getInventory().clear();
-        player.setAllowFlight(false);
-        player.setFlying(false);
         player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+
+        // Disattiva il volo vero e proprio
+        player.setFlying(false);
+
+        // Attiva il Double Jump nel config come impostazione predefinita
+        plugin.getConfig().set("players." + player.getUniqueId() + ".dj", true);
+        plugin.saveConfig();
+
+        // Consente il "volo" (necessario affinché il client di Minecraft permetta il doppio salto)
+        player.setAllowFlight(true);
 
         if (plugin.getConfig().contains("locations.lobby")) {
             Bukkit.getScheduler().runTask(plugin, () -> player.teleport((Location) plugin.getConfig().get("locations.lobby")));
+        }
+
+        // --- CALCOLO WR E RANK IN BACKGROUND ---
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                // Interroga Supabase senza bloccare il server
+                int wrCount = plugin.getDatabase().getPlayerWRCount(player.getName());
+
+                String rankColor = "§e";
+                String rankName = "Newbie";
+                String tag = "Newbie";
+
+                if (wrCount >= 100) { rankColor = "§6"; rankName = "Greatest of All Time"; tag = "GOAT"; }
+                else if (wrCount >= 90) { rankColor = "§e"; rankName = "Legend"; tag = "Legend"; }
+                else if (wrCount >= 80) { rankColor = "§6"; rankName = "Grandmaster"; tag = "G-Master"; }
+                else if (wrCount >= 70) { rankColor = "§c"; rankName = "Master"; tag = "Master"; }
+                else if (wrCount >= 60) { rankColor = "§4"; rankName = "Expert"; tag = "Expert"; }
+                else if (wrCount >= 50) { rankColor = "§c"; rankName = "Imperial"; tag = "Imperial"; }
+                else if (wrCount >= 45) { rankColor = "§d"; rankName = "Professional"; tag = "Pro"; }
+                else if (wrCount >= 40) { rankColor = "§5"; rankName = "Talented"; tag = "Talented"; }
+                else if (wrCount >= 35) { rankColor = "§9"; rankName = "Skilled"; tag = "Skilled"; }
+                else if (wrCount >= 30) { rankColor = "§1"; rankName = "Seasoned"; tag = "Seasoned"; }
+                else if (wrCount >= 25) { rankColor = "§3"; rankName = "Experienced"; tag = "Experienced"; }
+                else if (wrCount >= 20) { rankColor = "§2"; rankName = "Trained"; tag = "Trained"; }
+                else if (wrCount >= 15) { rankColor = "§a"; rankName = "Apprentice"; tag = "Apprentice"; }
+                else if (wrCount >= 10) { rankColor = "§1"; rankName = "Amateur"; tag = "Amateur"; }
+                else if (wrCount >= 6) { rankColor = "§8"; rankName = "Rookie"; tag = "Rookie"; }
+                else if (wrCount >= 3) { rankColor = "§7"; rankName = "Novice"; tag = "Novice"; }
+                else if (wrCount >= 1) { rankColor = "§f"; rankName = "Prospect"; tag = "Prospect"; }
+
+                // RUOLO CUSTOM ESCLUSIVO
+                if (player.getName().equalsIgnoreCase("AndryFox_14")) {
+                    rankColor = "§b";
+                    rankName = "Elite Fox";
+                    tag = "Elite Fox";
+                }
+
+                // Congeliamo le variabili
+                final String finalColor = rankColor;
+                final String finalRankName = rankName;
+                final String finalTag = tag;
+                final int finalWrCount = wrCount;
+
+                // Torna al thread principale per aggiornare l'interfaccia
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        // 1. ACTION BAR
+                        String message = "§6§lWR Totali: §f" + finalWrCount + " §8| " + finalColor + "§l" + finalRankName;
+                        player.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, net.md_5.bungee.api.chat.TextComponent.fromLegacyText(message));
+
+                        // 2. BARRA DELL'XP
+                        player.setLevel(finalWrCount);
+
+                        // 3. NAMETAG E TABLIST
+                        org.bukkit.scoreboard.Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+                        org.bukkit.scoreboard.Team team = board.getTeam(player.getName());
+                        if (team == null) {
+                            team = board.registerNewTeam(player.getName());
+                        }
+
+                        String prefix = finalColor + "[" + finalTag + "] §f";
+
+                        if (prefix.length() > 16) {
+                            prefix = prefix.substring(0, 16);
+                        }
+
+                        team.setPrefix(prefix);
+                        team.addEntry(player.getName());
+
+                        // --- TABLIST PERSONALIZZATA (Tramite NMS Reflection per 1.12.2) ---
+                        try {
+                            Class<?> chatSerializer = Class.forName("net.minecraft.server.v1_12_R1.IChatBaseComponent$ChatSerializer");
+                            Object headerObj = chatSerializer.getMethod("a", String.class).invoke(null, "{\"text\": \"\\n§e§lSpeedbuilders Practice\\n§fMap by §bAndryFox_14\\n\"}");
+                            Object footerObj = chatSerializer.getMethod("a", String.class).invoke(null, "{\"text\": \"\\n§7Usa §b/p §7per iniziare ad allenarti\\n\"}");
+
+                            Object packet = Class.forName("net.minecraft.server.v1_12_R1.PacketPlayOutPlayerListHeaderFooter").newInstance();
+
+                            java.lang.reflect.Field headerField = packet.getClass().getDeclaredField("a");
+                            headerField.setAccessible(true);
+                            headerField.set(packet, headerObj);
+
+                            java.lang.reflect.Field footerField = packet.getClass().getDeclaredField("b");
+                            footerField.setAccessible(true);
+                            footerField.set(packet, footerObj);
+
+                            Object handle = player.getClass().getMethod("getHandle").invoke(player);
+                            Object connection = handle.getClass().getField("playerConnection").get(handle);
+                            connection.getClass().getMethod("sendPacket", Class.forName("net.minecraft.server.v1_12_R1.Packet")).invoke(connection, packet);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                });
+            }
+        }.runTaskAsynchronously(plugin);
+    }
+
+    // Rende l'NPC cliccabile per tornare alla lobby
+    @EventHandler
+    public void onNPCInteract(org.bukkit.event.player.PlayerInteractEntityEvent event) {
+        if (event.getRightClicked().getCustomName() != null && event.getRightClicked().getCustomName().equals("§c§lExit")) {
+            event.setCancelled(true);
+            event.getRightClicked().remove(); // Questa riga lo disintegra all'istante
+            event.getPlayer().sendMessage("§aNPC di prova eliminato!");
+        }
+    }
+
+    // Blocca qualsiasi danno fortuito all'NPC
+    @EventHandler
+    public void onNPCDamage(org.bukkit.event.entity.EntityDamageEvent event) {
+        if (event.getEntity().getCustomName() != null && event.getEntity().getCustomName().equals("§c§lExit")) {
+            event.setCancelled(true);
         }
     }
 
@@ -160,35 +278,6 @@ public class Listeners implements Listener {
         if (block.getX() >= -3 && block.getX() <= 3 && block.getZ() >= -3 && block.getZ() <= 3 && block.getY() > 100) {
             if (plugin.getGameManager().getState(player).equals("PLAYING")) {
                 event.setInstaBreak(true);
-            }
-        }
-    }
-
-    @EventHandler
-    public void onToggleFlight(PlayerToggleFlightEvent event) {
-        Player player = event.getPlayer();
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE || !player.getWorld().getName().equals("practice")) return;
-
-        event.setCancelled(true);
-        player.setAllowFlight(false);
-        player.setFlying(false);
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                player.setVelocity(new Vector(0, 1.00, 0));
-                player.playSound(player.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1f, 1f);
-            }
-        }.runTask(plugin);
-    }
-
-    @EventHandler
-    public void onPlayerMove(PlayerMoveEvent event) {
-        Player player = event.getPlayer();
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE || !player.getWorld().getName().equals("practice")) return;
-
-        if (!player.getAllowFlight()) {
-            if (player.getLocation().getBlock().getRelative(BlockFace.DOWN).getType() != Material.AIR) {
-                player.setAllowFlight(true);
             }
         }
     }
@@ -315,6 +404,51 @@ public class Listeners implements Listener {
             // Salva la parola ricercata e riapre il menu (necessario aprirlo in modo sincrono)
             gm.setActiveSearch(player, msg);
             Bukkit.getScheduler().runTask(plugin, () -> gm.openBuildMenu(player, 1));
+        }
+    }
+
+    // Gestione della fisica del Double Jump
+    @EventHandler
+    public void onDoubleJump(PlayerToggleFlightEvent event) {
+        org.bukkit.entity.Player player = event.getPlayer();
+
+        // 1. Ignora chi è in creativa
+        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
+
+        // 2. Se il Double Jump non è attivo nel config, lascia che il volo normale funzioni
+        if (!plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) return;
+
+        // 3. Limita il DJ al raggio dell'isola (Attualmente coordinate X da -30 a 30)
+        if (player.getLocation().getX() < -30 || player.getLocation().getX() > 30) {
+            player.sendMessage("§cSei troppo lontano dalla tua isola per usare il Double Jump. Usa /fly.");
+            return;
+        }
+
+        // 4. Esegue la spinta vettoriale (Ripristinata all'originale)
+        event.setCancelled(true);
+        player.setAllowFlight(false);
+        player.setFlying(false);
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                player.setVelocity(new org.bukkit.util.Vector(0, 1.00, 0));
+                player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1f, 1f);
+            }
+        }.runTask(plugin);
+    }
+
+    // Ricarica il salto quando il giocatore tocca terra
+    @EventHandler
+    public void onPlayerMove(PlayerMoveEvent event) {
+        org.bukkit.entity.Player player = event.getPlayer();
+        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
+
+        // Se ha il DJ attivo e tocca un blocco solido sotto di lui, riattiva la possibilità di spiccare il salto
+        if (plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
+            if (player.getLocation().subtract(0, 0.1, 0).getBlock().getType().isSolid()) {
+                player.setAllowFlight(true);
+            }
         }
     }
 
