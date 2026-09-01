@@ -1,0 +1,18 @@
+name: SpeedBuildersPractice
+version: 1.0
+main: it.andrea.speedbuilders.Main
+depend: [HolographicDisplays]
+commands:
+  map:
+    description: Gestione arene
+  practice:
+    description: Entra in gioco
+  p:
+    description: Alias per practice
+  lobby:
+    description: Torna alla lobby
+    aliases: [ l ]
+  fly:
+    description: Attiva o disattiva il volo
+  dj:
+    description: Attiva o disattiva il doppio salto
