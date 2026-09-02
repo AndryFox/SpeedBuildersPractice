@@ -7,6 +7,7 @@ import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -38,6 +39,7 @@ public class GameManager {
     public boolean isAwaitingSearch(Player p) { return awaitingSearch.containsKey(p); }
     public void setActiveSearch(Player p, String search) { activeSearch.put(p, search); }
     public void clearSearch(Player p) { activeSearch.remove(p); }
+    public String getCurrentCategory(Player player) { return currentCategory.getOrDefault(player, "FearGames"); }
 
     public GameManager(Main plugin) {
         this.plugin = plugin;
@@ -68,7 +70,6 @@ public class GameManager {
         }
     }
 
-    // --- GETTERS & SETTERS PER GLI STATI ---
     public String getState(Player player) { return playerStates.getOrDefault(player, "IDLE"); }
     public void setState(Player player, String state) { playerStates.put(player, state); }
     public int getCurrentBuild(Player player) { return currentBuild.getOrDefault(player, -1); }
@@ -78,8 +79,8 @@ public class GameManager {
     public void setPendingDelete(Player player, int id) { pendingDeletes.put(player, id); }
 
     public boolean isLobbyWorld(World world) {
-        if (plugin.getBuildsConfig().contains("locations.lobby")) {
-            Location loc = (Location) plugin.getBuildsConfig().get("locations.lobby");
+        if (plugin.getConfig().contains("locations.lobby")) {
+            Location loc = (Location) plugin.getConfig().get("locations.lobby");
             return world.equals(loc.getWorld());
         }
         return false;
@@ -110,8 +111,8 @@ public class GameManager {
         practiceWorld.setDifficulty(Difficulty.PEACEFUL);
         practiceWorld.setGameRuleValue("doMobSpawning", "false");
         practiceWorld.setGameRuleValue("doDaylightCycle", "false");
-        practiceWorld.setGameRuleValue("announceAdvancements", "false"); // Disabilita achievement (PUNTO 11)
-        practiceWorld.setGameRuleValue("randomTickSpeed", "0"); // Blocca crescita erba, foglie, neve, ecc. (PUNTO 15)
+        practiceWorld.setGameRuleValue("announceAdvancements", "false");
+        practiceWorld.setGameRuleValue("randomTickSpeed", "0");
         practiceWorld.setTime(6000);
 
         int centerX = 0, centerY = 100, centerZ = 0, maxRadius = 13;
@@ -184,10 +185,14 @@ public class GameManager {
             }
         }
 
-        plugin.getBuildsConfig().set("builds." + id + ".name", buildName);
-        plugin.getBuildsConfig().set("builds." + id + ".blocks", blocksData);
-        plugin.getBuildsConfig().set("builds." + id + ".hotbar", hotbar);
-        plugin.saveConfig();
+        FileConfiguration config = plugin.getFearConfig();
+        config.set("builds." + id + ".name", buildName);
+        config.set("builds." + id + ".blocks", blocksData);
+        config.set("builds." + id + ".hotbar", hotbar);
+        try {
+            config.save(new java.io.File(plugin.getDataFolder(), "feargames_builds.yml"));
+        } catch (Exception e) { e.printStackTrace(); }
+
         player.sendMessage("§aBuild '" + buildName + "' salvata con il tuo ordine dell'inventario (ID: " + id + ")!");
     }
 
@@ -196,7 +201,7 @@ public class GameManager {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
 
-        currentCategory.put(player, category); // Registra dove sta giocando
+        currentCategory.put(player, category);
         FileConfiguration config = getBuildConfig(category);
 
         if (!config.contains("builds." + id)) {
@@ -237,11 +242,12 @@ public class GameManager {
     public void startCountdown(Player player, int countdown) {
         playerStates.put(player, "COUNTDOWN");
         int buildId = currentBuild.getOrDefault(player, -1);
-        String configName = buildId != -1 ? plugin.getBuildsConfig().getString("builds." + buildId + ".name", "Build Libera") : "Build Libera";
+        String cat = getCurrentCategory(player);
+        String configName = buildId != -1 ? getBuildConfig(cat).getString("builds." + buildId + ".name", "Build Libera") : "Build Libera";
         final String buildName = configName;
 
         BukkitTask task = new BukkitRunnable() {
-            int count = countdown; // Usa 3 o 6 passato da Listeners
+            int count = countdown;
             float[] scale = {0.5f, 0.5f, 0.63f, 0.79f, 1.0f, 1.26f};
 
             @Override
@@ -249,17 +255,14 @@ public class GameManager {
                 if (!player.isOnline() || !playerStates.getOrDefault(player, "").equals("COUNTDOWN")) { this.cancel(); return; }
 
                 if (count > 3) {
-                    // Mostra il nome della mappa finché i secondi sono maggiori di 3
                     player.sendTitle("", "§6" + buildName, 5, 25, 0);
                     count--;
                 } else if (count > 0) {
-                    // Conto alla rovescia 3, 2, 1
                     player.sendTitle("", "§a" + count, 0, 25, 0);
                     int pitchIndex = Math.max(0, Math.min(5, 6 - count));
                     player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, scale[pitchIndex]);
                     count--;
                 } else {
-                    // Il tuo finale personalizzato
                     player.sendTitle("", "§cTempo esaurito!", 0, 20, 10);
                     player.playSound(player.getLocation(), Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
                     clearPlot(player.getWorld());
@@ -276,7 +279,7 @@ public class GameManager {
     private void startTimer(Player player) {
         activeTimers.put(player, System.currentTimeMillis());
         int buildId = currentBuild.getOrDefault(player, -1);
-        final long finalBest = buildId != -1 ? plugin.getBuildsConfig().getLong("records." + player.getUniqueId().toString() + "." + buildId, 0) : 0;
+        final long finalBest = buildId != -1 ? plugin.getConfig().getLong("records." + player.getUniqueId().toString() + "." + buildId, 0) : 0;
 
         BukkitTask task = new BukkitRunnable() {
             @Override
@@ -294,29 +297,26 @@ public class GameManager {
     @SuppressWarnings("deprecation")
     public void giveBuildItems(Player player, int buildId) {
         player.getInventory().clear();
-        List<String> blocksData = plugin.getBuildsConfig().getStringList("builds." + buildId + ".blocks");
+        String cat = getCurrentCategory(player);
+        List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
         HashMap<String, Integer> blockCounts = new HashMap<>();
 
-        // 1. CONTEGGIO E TRADUZIONE
         for (String dataString : blocksData) {
             String[] parts = dataString.split(";");
             if (parts.length == 5) {
                 Material material = Material.valueOf(parts[3]);
                 byte data = Byte.parseByte(parts[4]);
 
-                // Ignora la metà superiore di porte e letti (evita di dare oggetti doppi)
                 if ((material.name().contains("DOOR") || material == Material.BED_BLOCK) && data >= 8) {
                     continue;
                 }
 
-                // Traduce il blocco fisico nel rispettivo oggetto da inventario
                 material = getInventoryItemMaterial(material);
 
-                // Normalizza tronchi, slab e porte
                 if (material == Material.LOG || material == Material.LOG_2) {
                     data = (byte) (data % 4);
                 } else if (material.name().contains("STEP") || material.name().contains("SLAB")) {
-                    data = (byte) (data % 8); // Fix Slab non texturate
+                    data = (byte) (data % 8);
                 } else if (material.name().contains("DOOR") || material == Material.BED) {
                     data = 0;
                 }
@@ -326,8 +326,7 @@ public class GameManager {
             }
         }
 
-        // 2. SMISTAMENTO NELLA HOTBAR (Rimane invariato)
-        List<String> hotbar = plugin.getBuildsConfig().getStringList("builds." + buildId + ".hotbar");
+        List<String> hotbar = getBuildConfig(cat).getStringList("builds." + buildId + ".hotbar");
         if (hotbar != null && !hotbar.isEmpty()) {
             for (int i = 0; i < hotbar.size() && i < 9; i++) {
                 String[] matData = hotbar.get(i).split(";");
@@ -354,7 +353,6 @@ public class GameManager {
             }
         }
 
-        // 3. AGGIUNTA SCARTI
         for (Map.Entry<String, Integer> entry : blockCounts.entrySet()) {
             String[] matData = entry.getKey().split(";");
             Material material = Material.valueOf(matData[0]);
@@ -368,7 +366,9 @@ public class GameManager {
     public boolean checkBuildPerfect(Player player) {
         int buildId = currentBuild.getOrDefault(player, -1);
         if (buildId == -1) return false;
-        List<String> blocksData = plugin.getBuildsConfig().getStringList("builds." + buildId + ".blocks");
+
+        String cat = getCurrentCategory(player);
+        List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
         World world = player.getWorld();
 
         int blocksInArena = 0;
@@ -389,7 +389,6 @@ public class GameManager {
                     Material savedMat = Material.valueOf(parts[3]);
                     byte savedData = Byte.parseByte(parts[4]);
 
-                    // PUNTO 14: Ignora la rotazione per Zucche e Zucche illuminate
                     boolean ignoreData = (savedMat == Material.PUMPKIN || savedMat == Material.JACK_O_LANTERN);
 
                     if (block.getType() != savedMat || (!ignoreData && block.getData() != savedData)) {
@@ -418,10 +417,10 @@ public class GameManager {
         int buildId = currentBuild.getOrDefault(player, -1);
         if (buildId != -1) {
             String recordPath = "records." + player.getUniqueId().toString() + "." + buildId;
-            long currentRecord = plugin.getBuildsConfig().getLong(recordPath, 0);
+            long currentRecord = plugin.getConfig().getLong(recordPath, 0);
 
             if (currentRecord == 0 || elapsed < currentRecord) {
-                plugin.getBuildsConfig().set(recordPath, elapsed);
+                plugin.getConfig().set(recordPath, elapsed);
                 plugin.saveConfig();
                 player.sendMessage(currentRecord == 0 ? "§b§lRecord Personale: §f" + seconds + "s" : "§b§lRecord Personale: §f" + seconds + "s §7(" + (currentRecord / 1000.0) + "s -> " + seconds + "s)");
             }
@@ -430,8 +429,7 @@ public class GameManager {
                 @Override
                 public void run() {
                     if (player.isOnline() && playerStates.getOrDefault(player, "").equals("WAITING")) {
-                        loadBuild(player, buildId);
-                        // Modifica questa riga dentro la BukkitRunnable di handlePerfect:
+                        loadBuild(player, buildId, getCurrentCategory(player));
                         startCountdown(player, 3);
                     }
                 }
@@ -441,7 +439,31 @@ public class GameManager {
         }
     }
 
-    // AGGIORNATO: Passa la categoria al menu
+    public FileConfiguration getBuildConfig(String category) {
+        return (category != null && category.equals("Mineplex")) ? plugin.getMineplexConfig() : plugin.getFearConfig();
+    }
+
+    public void openCategoryMenu(Player player) {
+        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 27, "§8Seleziona Server");
+
+        ItemStack fear = new ItemStack(Material.STAINED_CLAY, 1, (byte) 14);
+        org.bukkit.inventory.meta.ItemMeta fearMeta = fear.getItemMeta();
+        fearMeta.setDisplayName("§c§lmc.feargames.eu");
+        fearMeta.setLore(java.util.Arrays.asList("§7Clicca per sfogliare le", "§7build originali di FearGames."));
+        fear.setItemMeta(fearMeta);
+
+        ItemStack mineplex = new ItemStack(Material.STAINED_CLAY, 1, (byte) 5);
+        org.bukkit.inventory.meta.ItemMeta mineplexMeta = mineplex.getItemMeta();
+        mineplexMeta.setDisplayName("§a§lplay.mineplex.com");
+        mineplexMeta.setLore(java.util.Arrays.asList("§7Clicca per sfogliare le", "§7build originali di Mineplex."));
+        mineplex.setItemMeta(mineplexMeta);
+
+        inv.setItem(11, fear);
+        inv.setItem(15, mineplex);
+
+        player.openInventory(inv);
+    }
+
     public void openBuildMenu(Player player, int page, String category) {
         String filter = activeSearch.get(player);
         String title = filter == null ? "§8" + category + " - P. " + page : "§8Cerca (" + category + ") - P. " + page;
@@ -466,11 +488,11 @@ public class GameManager {
 
         for (int i = startIndex; i < endIndex; i++) {
             int id = buildIds.get(i);
-            String name = plugin.getBuildsConfig().getString("builds." + id + ".name", "Sconosciuta");
+            String name = config.getString("builds." + id + ".name", "Sconosciuta");
 
             Material iconMat = Material.PAPER;
             byte iconData = 0;
-            List<String> hotbar = plugin.getBuildsConfig().getStringList("builds." + id + ".hotbar");
+            List<String> hotbar = config.getStringList("builds." + id + ".hotbar");
             if (hotbar != null && !hotbar.isEmpty()) {
                 for(String h : hotbar) {
                     if(!h.startsWith("AIR")) {
@@ -491,7 +513,6 @@ public class GameManager {
             inv.setItem(i - startIndex, item);
         }
 
-        // Frecce per le pagine
         if (page > 1) {
             ItemStack prev = new ItemStack(Material.ARROW);
             org.bukkit.inventory.meta.ItemMeta meta = prev.getItemMeta();
@@ -508,7 +529,6 @@ public class GameManager {
             inv.setItem(53, next);
         }
 
-        // Bottone di Ricerca al centro in basso (Slot 49)
         ItemStack searchBtn = new ItemStack(Material.NAME_TAG);
         org.bukkit.inventory.meta.ItemMeta searchMeta = searchBtn.getItemMeta();
         searchMeta.setDisplayName("§e§lCerca Build");
@@ -523,17 +543,16 @@ public class GameManager {
         player.openInventory(inv);
     }
 
-    // --- NUOVO SISTEMA DI ERRORI VISIVI (BLOCCHI FANTASMA) ---
     @SuppressWarnings("deprecation")
     public void showErrors(Player player) {
         int buildId = getCurrentBuild(player);
         if (buildId == -1) { player.sendMessage("§cNessuna build caricata!"); return; }
         if (!getState(player).equals("PLAYING")) { player.sendMessage("§cDevi essere in partita per vedere gli errori!"); return; }
 
-        List<String> blocksData = plugin.getBuildsConfig().getStringList("builds." + buildId + ".blocks");
+        String cat = getCurrentCategory(player);
+        List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
         World world = player.getWorld();
 
-        // Mappa dei blocchi corretti
         HashMap<String, String> expected = new HashMap<>();
         for (String dataString : blocksData) {
             String[] parts = dataString.split(";");
@@ -553,7 +572,6 @@ public class GameManager {
 
                     if (b.getType() != Material.AIR) {
                         if (exp == null) {
-                            // Blocco di troppo: Diventa Vetro Rosso
                             player.sendBlockChange(b.getLocation(), Material.STAINED_GLASS, (byte) 14);
                             errorsCount++;
                         } else {
@@ -563,18 +581,16 @@ public class GameManager {
                             boolean ignoreData = (eMat == Material.PUMPKIN || eMat == Material.JACK_O_LANTERN);
 
                             if (b.getType() != eMat || (!ignoreData && b.getData() != eData)) {
-                                // Blocco sbagliato (posizione o rotazione): Diventa Vetro Rosso
                                 player.sendBlockChange(b.getLocation(), Material.STAINED_GLASS, (byte) 14);
                                 errorsCount++;
                             }
-                            expected.remove(locKey); // Rimuove dalla lista dei "mancanti"
+                            expected.remove(locKey);
                         }
                     }
                 }
             }
         }
 
-        // I rimanenti sono i blocchi dimenticati (Mancanti)
         for (Map.Entry<String, String> entry : expected.entrySet()) {
             String[] loc = entry.getKey().split(";");
             String[] matData = entry.getValue().split(";");
@@ -583,7 +599,6 @@ public class GameManager {
             Material eMat = Material.valueOf(matData[0]);
             byte eData = Byte.parseByte(matData[1]);
 
-            // Fa apparire come un fantasma il blocco corretto che si era dimenticato
             player.sendBlockChange(bLoc, eMat, eData);
             errorsCount++;
         }
@@ -596,7 +611,6 @@ public class GameManager {
             player.sendMessage("§8- §aBlocchi perfetti apparsi§7: Li avevi dimenticati.");
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
 
-            // Ripristina la visuale reale dopo 5 secondi (100 tick)
             new BukkitRunnable() {
                 @Override
                 public void run() {
@@ -618,36 +632,9 @@ public class GameManager {
         int buildId = getCurrentBuild(player);
         if (buildId == -1) { player.sendMessage("§cDevi prima caricare una build con /map load <id>!"); return; }
         forceReset(player);
-        loadBuild(player, buildId);
+        loadBuild(player, buildId, getCurrentCategory(player));
         setState(player, "IDLE");
         player.sendMessage("§aBuild in modalità esplorazione. Clicca il quarzo per far partire il timer!");
-    }
-
-    // Metodo per ottenere al volo il file corretto
-    public FileConfiguration getBuildConfig(String category) {
-        return (category != null && category.equals("Mineplex")) ? plugin.getMineplexConfig() : plugin.getFearConfig();
-    }
-
-    // NUOVO: Menu di Selezione
-    public void openCategoryMenu(Player player) {
-        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 27, "§8Seleziona Server");
-
-        ItemStack fear = new ItemStack(Material.STAINED_CLAY, 1, (byte) 14);
-        org.bukkit.inventory.meta.ItemMeta fearMeta = fear.getItemMeta();
-        fearMeta.setDisplayName("§c§lmc.feargames.eu");
-        fearMeta.setLore(java.util.Arrays.asList("§7Clicca per sfogliare le", "§7build originali di FearGames."));
-        fear.setItemMeta(fearMeta);
-
-        ItemStack mineplex = new ItemStack(Material.STAINED_CLAY, 1, (byte) 5);
-        org.bukkit.inventory.meta.ItemMeta mineplexMeta = mineplex.getItemMeta();
-        mineplexMeta.setDisplayName("§a§lplay.mineplex.com");
-        mineplexMeta.setLore(java.util.Arrays.asList("§7Clicca per sfogliare le", "§7build originali di Mineplex."));
-        mineplex.setItemMeta(mineplexMeta);
-
-        inv.setItem(11, fear);
-        inv.setItem(15, mineplex);
-
-        player.openInventory(inv);
     }
 
 }

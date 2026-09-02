@@ -17,4 +17,6 @@ commands:
   dj:
     description: Attiva o disattiva il doppio salto
   savemineplex:
-    description: Esporta una build di Mineplex nel file dedicato.
+    description: Salva manualmente una build di Mineplex
+  scanall:
+    description: Scansiona tutte le build di Mineplex nel raggio

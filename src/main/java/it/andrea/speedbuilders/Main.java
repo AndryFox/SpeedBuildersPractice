@@ -1,8 +1,9 @@
 package it.andrea.speedbuilders;
 
-import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.java.JavaPlugin;
+
 import java.io.File;
 
 public class Main extends JavaPlugin {
@@ -10,24 +11,34 @@ public class Main extends JavaPlugin {
     private GameManager gameManager;
     private Database database;
     private HologramManager hologramManager;
-    private File buildsFile;
-    private FileConfiguration buildsConfig;
+
+    // Dichiarazione dei file custom
+    private FileConfiguration fearConfig;
+    private FileConfiguration mineplexConfig;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
-        // Carica i due file delle build
-        File fearFile = new File(getDataFolder(), "feargames_builds.yml");
-        if (!fearFile.exists()) saveResource("feargames_builds.yml", false);
-        fearConfig = YamlConfiguration.loadConfiguration(fearFile);
+        // Caricamento sicuro dei file custom
+        try {
+            File fearFile = new File(getDataFolder(), "feargames_builds.yml");
+            if (!fearFile.exists()) {
+                fearFile.getParentFile().mkdirs();
+                fearFile.createNewFile();
+            }
+            fearConfig = YamlConfiguration.loadConfiguration(fearFile);
 
-        File mineplexFile = new File(getDataFolder(), "mineplex_builds.yml");
-        if (!mineplexFile.exists()) saveResource("mineplex_builds.yml", false);
-        mineplexConfig = YamlConfiguration.loadConfiguration(mineplexFile);
-
-        // Inizializza il nuovo file
-        createBuildsConfig();
+            File mineplexFile = new File(getDataFolder(), "mineplex_builds.yml");
+            if (!mineplexFile.exists()) {
+                mineplexFile.getParentFile().mkdirs();
+                mineplexFile.createNewFile();
+            }
+            mineplexConfig = YamlConfiguration.loadConfiguration(mineplexFile);
+        } catch (Exception e) {
+            getLogger().severe("Errore durante la creazione dei file delle build!");
+            e.printStackTrace();
+        }
 
         // Setup configurazione Database
         if (!getConfig().contains("database.host")) {
@@ -70,7 +81,10 @@ public class Main extends JavaPlugin {
         getCommand("lobby").setExecutor(cmds);
         getCommand("fly").setExecutor(cmds);
         getCommand("dj").setExecutor(cmds);
+
+        // Comando per salvare le build di Mineplex
         getCommand("savemineplex").setExecutor(new SaveMineplexCommand(this));
+        getCommand("scanall").setExecutor(new ScanAllMineplexCommand(this));
 
         // Registra gli eventi
         getServer().getPluginManager().registerEvents(new Listeners(this), this);
@@ -92,31 +106,11 @@ public class Main extends JavaPlugin {
         getLogger().info("SpeedBuilders disattivato correttamente!");
     }
 
+    // Metodi Getter per accedere ovunque a queste classi e configurazioni
     public GameManager getGameManager() { return gameManager; }
     public Database getDatabase() { return database; }
     public HologramManager getHologramManager() { return hologramManager; }
+
     public FileConfiguration getFearConfig() { return fearConfig; }
     public FileConfiguration getMineplexConfig() { return mineplexConfig; }
-
-    private void createBuildsConfig() {
-        buildsFile = new File(getDataFolder(), "feargames_builds.yml");
-        if (!buildsFile.exists()) {
-            buildsFile.getParentFile().mkdirs();
-            saveResource("feargames_builds.yml", false); // Opzionale: se hai un file predefinito
-        }
-        buildsConfig = YamlConfiguration.loadConfiguration(buildsFile);
-    }
-
-    public FileConfiguration getBuildsConfig() {
-        return buildsConfig;
-    }
-
-    public void saveBuildsConfig() {
-        try {
-            buildsConfig.save(buildsFile);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
 }

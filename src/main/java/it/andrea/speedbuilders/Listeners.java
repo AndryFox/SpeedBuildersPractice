@@ -40,25 +40,20 @@ public class Listeners implements Listener {
         player.getInventory().clear();
         player.setGameMode(org.bukkit.GameMode.SURVIVAL);
 
-        // Disattiva il volo vero e proprio
         player.setFlying(false);
 
-        // Attiva il Double Jump nel config come impostazione predefinita
         plugin.getConfig().set("players." + player.getUniqueId() + ".dj", true);
         plugin.saveConfig();
 
-        // Consente il "volo" (necessario affinché il client di Minecraft permetta il doppio salto)
         player.setAllowFlight(true);
 
         if (plugin.getConfig().contains("locations.lobby")) {
             Bukkit.getScheduler().runTask(plugin, () -> player.teleport((Location) plugin.getConfig().get("locations.lobby")));
         }
 
-        // --- CALCOLO WR E RANK IN BACKGROUND ---
         new BukkitRunnable() {
             @Override
             public void run() {
-                // Interroga Supabase senza bloccare il server
                 int wrCount = plugin.getDatabase().getPlayerWRCount(player.getName());
 
                 String rankColor = "§e";
@@ -83,30 +78,24 @@ public class Listeners implements Listener {
                 else if (wrCount >= 3) { rankColor = "§7"; rankName = "Novice"; tag = "Novice"; }
                 else if (wrCount >= 1) { rankColor = "§f"; rankName = "Prospect"; tag = "Prospect"; }
 
-                // RUOLO CUSTOM ESCLUSIVO
                 if (player.getName().equalsIgnoreCase("AndryFox_14")) {
                     rankColor = "§b";
                     rankName = "Elite Fox";
                     tag = "Elite Fox";
                 }
 
-                // Congeliamo le variabili
                 final String finalColor = rankColor;
                 final String finalRankName = rankName;
                 final String finalTag = tag;
                 final int finalWrCount = wrCount;
 
-                // Torna al thread principale per aggiornare l'interfaccia
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (player.isOnline()) {
-                        // 1. ACTION BAR
                         String message = "§6§lWR Totali: §f" + finalWrCount + " §8| " + finalColor + "§l" + finalRankName;
                         player.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, net.md_5.bungee.api.chat.TextComponent.fromLegacyText(message));
 
-                        // 2. BARRA DELL'XP
                         player.setLevel(finalWrCount);
 
-                        // 3. NAMETAG E TABLIST
                         org.bukkit.scoreboard.Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
                         org.bukkit.scoreboard.Team team = board.getTeam(player.getName());
                         if (team == null) {
@@ -122,7 +111,6 @@ public class Listeners implements Listener {
                         team.setPrefix(prefix);
                         team.addEntry(player.getName());
 
-                        // --- TABLIST PERSONALIZZATA (Tramite NMS Reflection per 1.12.2) ---
                         try {
                             Class<?> chatSerializer = Class.forName("net.minecraft.server.v1_12_R1.IChatBaseComponent$ChatSerializer");
                             Object headerObj = chatSerializer.getMethod("a", String.class).invoke(null, "{\"text\": \"\\n§e§lSpeedbuilders Practice\\n§fMap by §bAndryFox_14\\n\"}");
@@ -181,11 +169,8 @@ public class Listeners implements Listener {
                         int buildId = gm.getCurrentBuild(player);
                         if (buildId != -1) {
                             gm.forceReset(player);
-                            // Recuperiamo in modo dinamico la categoria giocata attualmente dall'utente.
-                            // Per evitare un null pointer, andrà inizializzata quando carica il gioco.
-                            // Al momento la escludiamo dal floorclick se già nel metodo handlePerfect usi il timer.
-                            // Aggiungo il fix per renderlo compatibile:
-                            gm.loadBuild(player, buildId, "FearGames"); // Sostituiremo con salvataggio dinamico della categoria
+                            // Recupera in modo dinamico la categoria in base all'ultima giocata
+                            gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
                             gm.startCountdown(player, 3);
                         } else {
                             player.sendMessage("§cDevi prima caricare una build con /map load <id>!");
@@ -293,7 +278,7 @@ public class Listeners implements Listener {
 
         if (block.getX() >= -3 && block.getX() <= 3 && block.getZ() >= -3 && block.getZ() <= 3 && block.getY() > 100) {
             if (plugin.getGameManager().getState(player).equals("PLAYING")) {
-                event.setInstaBreak(true); // NOTA: questa è la riga che duplica la rottura in Survival. Consigliata la rimozione se usi il sistema Custom.
+                event.setInstaBreak(true);
             }
         }
     }
@@ -351,7 +336,6 @@ public class Listeners implements Listener {
         String title = event.getView().getTitle();
         Player player = (Player) event.getWhoClicked();
 
-        // 1. CLICK SUL MENU SELEZIONE SERVER
         if (title.equals("§8Seleziona Server")) {
             event.setCancelled(true);
             if (event.getCurrentItem() == null || !event.getCurrentItem().hasItemMeta()) return;
@@ -365,7 +349,6 @@ public class Listeners implements Listener {
             return;
         }
 
-        // 2. CLICK SUL MENU DELLE BUILD
         if (title.contains("- P. ")) {
             event.setCancelled(true);
             if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
@@ -374,7 +357,6 @@ public class Listeners implements Listener {
             String name = event.getCurrentItem().getItemMeta().getDisplayName();
             GameManager gm = plugin.getGameManager();
 
-            // Capisce in che lista siamo leggendo il titolo
             String category = title.contains("Mineplex") ? "Mineplex" : "FearGames";
 
             int currentPage = 1;
@@ -383,7 +365,6 @@ public class Listeners implements Listener {
                 if (split.length > 1) currentPage = Integer.parseInt(split[1].trim());
             } catch (Exception ignored) {}
 
-            // Bottone Ricerca
             if (event.getCurrentItem().getType() == Material.NAME_TAG && name.equals("§e§lCerca Build")) {
                 player.closeInventory();
                 gm.setAwaitingSearch(player, true);
@@ -391,7 +372,6 @@ public class Listeners implements Listener {
                 return;
             }
 
-            // Pagine
             if (name.equals("§cPagina Precedente")) {
                 gm.openBuildMenu(player, currentPage - 1, category);
                 return;
@@ -400,7 +380,6 @@ public class Listeners implements Listener {
                 return;
             }
 
-            // Click sulla Build
             List<String> lore = event.getCurrentItem().getItemMeta().getLore();
             if (lore != null && !lore.isEmpty()) {
                 String rawId = org.bukkit.ChatColor.stripColor(lore.get(0)).replace("ID: ", "").trim();
@@ -409,22 +388,21 @@ public class Listeners implements Listener {
                     player.closeInventory();
 
                     gm.forceReset(player);
-                    gm.loadBuild(player, id, category); // Carica passando la categoria corretta!
+                    gm.loadBuild(player, id, category);
                     gm.startCountdown(player, 6);
                 } catch (Exception ignored) {}
             }
         }
     }
 
-    // Ascolta la chat per intercettare la ricerca
     @EventHandler
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
         GameManager gm = plugin.getGameManager();
 
         if (gm.isAwaitingSearch(player)) {
-            event.setCancelled(true); // Evita che il messaggio venga visto dagli altri
-            gm.setAwaitingSearch(player, false); // Spegne la modalità ascolto
+            event.setCancelled(true);
+            gm.setAwaitingSearch(player, false);
 
             String msg = event.getMessage();
 
@@ -433,30 +411,24 @@ public class Listeners implements Listener {
                 return;
             }
 
-            // Salva la parola ricercata e riapre il MENU CATEGORIE per decidere dove applicarla
             gm.setActiveSearch(player, msg);
             Bukkit.getScheduler().runTask(plugin, () -> gm.openCategoryMenu(player));
         }
     }
 
-    // Gestione della fisica del Double Jump
     @EventHandler
     public void onDoubleJump(PlayerToggleFlightEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
 
-        // 1. Ignora chi è in creativa
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
 
-        // 2. Se il Double Jump non è attivo nel config, lascia che il volo normale funzioni
         if (!plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) return;
 
-        // 3. Limita il DJ al raggio dell'isola (Attualmente coordinate X da -30 a 30)
         if (player.getLocation().getX() < -30 || player.getLocation().getX() > 30) {
             player.sendMessage("§cSei troppo lontano dalla tua isola per usare il Double Jump. Usa /fly.");
             return;
         }
 
-        // 4. Esegue la spinta vettoriale (Ripristinata all'originale)
         event.setCancelled(true);
         player.setAllowFlight(false);
         player.setFlying(false);
@@ -470,13 +442,11 @@ public class Listeners implements Listener {
         }.runTask(plugin);
     }
 
-    // Ricarica il salto quando il giocatore tocca terra
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
 
-        // Se ha il DJ attivo e tocca un blocco solido sotto di lui, riattiva la possibilità di spiccare il salto
         if (plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
             if (player.getLocation().subtract(0, 0.1, 0).getBlock().getType().isSolid()) {
                 player.setAllowFlight(true);
