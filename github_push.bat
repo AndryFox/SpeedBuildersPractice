@@ -8,7 +8,7 @@ git commit -m "Aggiornamento automatico del codice"
 
 echo.
 echo Caricamento su GitHub in corso...
-git push origin main
+git push origin master
 
 echo.
 echo Caricamento completato!
