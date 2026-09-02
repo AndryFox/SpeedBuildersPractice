@@ -19,9 +19,9 @@ public class HologramManager {
     }
 
     public void spawnOrUpdate() {
-        if (!plugin.getConfig().contains("locations.hologram")) return;
+        if (!plugin.getBuildsConfig().contains("locations.hologram")) return;
 
-        Location loc = (Location) plugin.getConfig().get("locations.hologram");
+        Location loc = (Location) plugin.getBuildsConfig().get("locations.hologram");
 
         // Esegue la query al database in modo asincrono (Zero Lag)
         new BukkitRunnable() {

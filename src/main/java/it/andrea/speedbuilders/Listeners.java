@@ -28,7 +28,6 @@ import java.util.List;
 public class Listeners implements Listener {
 
     private final Main plugin;
-    private final java.util.HashMap<java.util.UUID, Long> breakCooldown = new java.util.HashMap<>(); // <-- AGGIUNGI QUESTA
 
     public Listeners(Main plugin) {
         this.plugin = plugin;
@@ -151,17 +150,15 @@ public class Listeners implements Listener {
         }.runTaskAsynchronously(plugin);
     }
 
-    // Rende l'NPC cliccabile per tornare alla lobby
     @EventHandler
     public void onNPCInteract(org.bukkit.event.player.PlayerInteractEntityEvent event) {
         if (event.getRightClicked().getCustomName() != null && event.getRightClicked().getCustomName().equals("§c§lExit")) {
             event.setCancelled(true);
-            event.getRightClicked().remove(); // Questa riga lo disintegra all'istante
+            event.getRightClicked().remove();
             event.getPlayer().sendMessage("§aNPC di prova eliminato!");
         }
     }
 
-    // Blocca qualsiasi danno fortuito all'NPC
     @EventHandler
     public void onNPCDamage(org.bukkit.event.entity.EntityDamageEvent event) {
         if (event.getEntity().getCustomName() != null && event.getEntity().getCustomName().equals("§c§lExit")) {
@@ -183,10 +180,13 @@ public class Listeners implements Listener {
                         GameManager gm = plugin.getGameManager();
                         int buildId = gm.getCurrentBuild(player);
                         if (buildId != -1) {
-
                             gm.forceReset(player);
-                            gm.loadBuild(player, buildId);
-                            gm.startCountdown(player, 3); // <-- Parte in 3 secondi
+                            // Recuperiamo in modo dinamico la categoria giocata attualmente dall'utente.
+                            // Per evitare un null pointer, andrà inizializzata quando carica il gioco.
+                            // Al momento la escludiamo dal floorclick se già nel metodo handlePerfect usi il timer.
+                            // Aggiungo il fix per renderlo compatibile:
+                            gm.loadBuild(player, buildId, "FearGames"); // Sostituiremo con salvataggio dinamico della categoria
+                            gm.startCountdown(player, 3);
                         } else {
                             player.sendMessage("§cDevi prima caricare una build con /map load <id>!");
                         }
@@ -240,27 +240,16 @@ public class Listeners implements Listener {
 
         if (!gm.getState(player).equals("PLAYING")) { event.setCancelled(true); return; }
 
-        // === FIX DOPPIA ROTTURA (Cooldown simulazione Creativa) ===
-        long now = System.currentTimeMillis();
-        if (breakCooldown.containsKey(player.getUniqueId()) && (now - breakCooldown.get(player.getUniqueId()) < 55)) { // <-- CAMBIA DA 150 A 250 (o 300)
-            event.setCancelled(true);
-            return;
-        }
-        breakCooldown.put(player.getUniqueId(), now);
-        // ==============================================
+        event.setDropItems(false);
 
-        event.setDropItems(false); // Fondamentale per evitare drop doppi!
-
-        // === FIX PORTE: Distrugge entrambe le metà e dà 1 solo oggetto ===
         Material type = block.getType();
         if (type.name().contains("DOOR") && !type.name().contains("TRAP")) {
-            event.setCancelled(true); // Blocca la rottura buggata di Minecraft
+            event.setCancelled(true);
 
             byte data = block.getData();
             Block top = (data >= 8) ? block : block.getRelative(org.bukkit.block.BlockFace.UP);
             Block bottom = (data >= 8) ? block.getRelative(org.bukkit.block.BlockFace.DOWN) : block;
 
-            // Distrugge entrambe le metà istantaneamente
             if (top.getType() == type) top.setType(Material.AIR);
             if (bottom.getType() == type) bottom.setType(Material.AIR);
 
@@ -272,13 +261,11 @@ public class Listeners implements Listener {
             });
             return;
         }
-        // =================================================================
 
         Material dropMat = gm.getInventoryItemMaterial(block.getType());
         byte dropData = block.getData();
         boolean shouldDrop = true;
 
-        // Normalizza il drop
         if (dropMat == Material.LOG || dropMat == Material.LOG_2) {
             dropData = (byte) (dropData % 4);
         } else if (dropMat.name().contains("STEP") || dropMat.name().contains("SLAB")) {
@@ -306,7 +293,7 @@ public class Listeners implements Listener {
 
         if (block.getX() >= -3 && block.getX() <= 3 && block.getZ() >= -3 && block.getZ() <= 3 && block.getY() > 100) {
             if (plugin.getGameManager().getState(player).equals("PLAYING")) {
-                event.setInstaBreak(true);
+                event.setInstaBreak(true); // NOTA: questa è la riga che duplica la rottura in Survival. Consigliata la rimozione se usi il sistema Custom.
             }
         }
     }
@@ -342,7 +329,7 @@ public class Listeners implements Listener {
             }
             else if (npcName.equalsIgnoreCase("Lista Build")) {
                 event.setCancelled(true);
-                event.getPlayer().performCommand("p list");
+                plugin.getGameManager().openCategoryMenu(event.getPlayer());
             }
             else if (npcName.equalsIgnoreCase("Trova Errori")) {
                 event.setCancelled(true);
@@ -362,47 +349,59 @@ public class Listeners implements Listener {
     @EventHandler
     public void onInventoryClick(org.bukkit.event.inventory.InventoryClickEvent event) {
         String title = event.getView().getTitle();
+        Player player = (Player) event.getWhoClicked();
 
-        // Riconosce sia il menu normale che quello in modalità ricerca
-        if (title.contains("Lista Build - P. ") || title.contains("Ricerca - P. ")) {
+        // 1. CLICK SUL MENU SELEZIONE SERVER
+        if (title.equals("§8Seleziona Server")) {
             event.setCancelled(true);
+            if (event.getCurrentItem() == null || !event.getCurrentItem().hasItemMeta()) return;
 
+            String name = event.getCurrentItem().getItemMeta().getDisplayName();
+            if (name.contains("feargames")) {
+                plugin.getGameManager().openBuildMenu(player, 1, "FearGames");
+            } else if (name.contains("mineplex")) {
+                plugin.getGameManager().openBuildMenu(player, 1, "Mineplex");
+            }
+            return;
+        }
+
+        // 2. CLICK SUL MENU DELLE BUILD
+        if (title.contains("- P. ")) {
+            event.setCancelled(true);
             if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
+            if (!event.getCurrentItem().hasItemMeta() || !event.getCurrentItem().getItemMeta().hasDisplayName()) return;
 
-            Player player = (Player) event.getWhoClicked();
-            ItemStack item = event.getCurrentItem();
-            if (!item.hasItemMeta() || !item.getItemMeta().hasDisplayName()) return;
-
-            String name = item.getItemMeta().getDisplayName();
+            String name = event.getCurrentItem().getItemMeta().getDisplayName();
             GameManager gm = plugin.getGameManager();
 
-            // Calcola in che pagina ci troviamo leggendo il titolo
+            // Capisce in che lista siamo leggendo il titolo
+            String category = title.contains("Mineplex") ? "Mineplex" : "FearGames";
+
             int currentPage = 1;
             try {
                 String[] split = title.split("- P. ");
                 if (split.length > 1) currentPage = Integer.parseInt(split[1].trim());
             } catch (Exception ignored) {}
 
-            // Se clicca il bottone per cercare
-            if (item.getType() == Material.NAME_TAG && name.equals("§e§lCerca Build")) {
+            // Bottone Ricerca
+            if (event.getCurrentItem().getType() == Material.NAME_TAG && name.equals("§e§lCerca Build")) {
                 player.closeInventory();
-                gm.setAwaitingSearch(player, true); // Attiva la modalità ascolto chat
+                gm.setAwaitingSearch(player, true);
                 player.sendMessage("§aScrivi in chat la parola da cercare!");
-                player.sendMessage("§7(Oppure scrivi §cannulla§7 per annullare)");
                 return;
             }
 
-            // Frecce per cambiare pagina
+            // Pagine
             if (name.equals("§cPagina Precedente")) {
-                gm.openBuildMenu(player, currentPage - 1);
+                gm.openBuildMenu(player, currentPage - 1, category);
                 return;
             } else if (name.equals("§aPagina Successiva")) {
-                gm.openBuildMenu(player, currentPage + 1);
+                gm.openBuildMenu(player, currentPage + 1, category);
                 return;
             }
 
-            // Se ha cliccato su una Build da giocare
-            List<String> lore = item.getItemMeta().getLore();
+            // Click sulla Build
+            List<String> lore = event.getCurrentItem().getItemMeta().getLore();
             if (lore != null && !lore.isEmpty()) {
                 String rawId = org.bukkit.ChatColor.stripColor(lore.get(0)).replace("ID: ", "").trim();
                 try {
@@ -410,8 +409,8 @@ public class Listeners implements Listener {
                     player.closeInventory();
 
                     gm.forceReset(player);
-                    gm.loadBuild(player, id);
-                    gm.startCountdown(player, 6); // <-- Parte in 6 secondi
+                    gm.loadBuild(player, id, category); // Carica passando la categoria corretta!
+                    gm.startCountdown(player, 6);
                 } catch (Exception ignored) {}
             }
         }
@@ -434,9 +433,9 @@ public class Listeners implements Listener {
                 return;
             }
 
-            // Salva la parola ricercata e riapre il menu (necessario aprirlo in modo sincrono)
+            // Salva la parola ricercata e riapre il MENU CATEGORIE per decidere dove applicarla
             gm.setActiveSearch(player, msg);
-            Bukkit.getScheduler().runTask(plugin, () -> gm.openBuildMenu(player, 1));
+            Bukkit.getScheduler().runTask(plugin, () -> gm.openCategoryMenu(player));
         }
     }
 

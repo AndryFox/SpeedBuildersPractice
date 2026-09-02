@@ -16,3 +16,5 @@ commands:
     description: Attiva o disattiva il volo
   dj:
     description: Attiva o disattiva il doppio salto
+  savemineplex:
+    description: Esporta una build di Mineplex nel file dedicato.

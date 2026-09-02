@@ -45,8 +45,8 @@ public class Commands implements CommandExecutor {
                 player.sendMessage("§aVolo attivato!");
 
                 // Spegne il Double Jump in automatico per evitare conflitti
-                if (plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
-                    plugin.getConfig().set("players." + player.getUniqueId() + ".dj", false);
+                if (plugin.getBuildsConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
+                    plugin.getBuildsConfig().set("players." + player.getUniqueId() + ".dj", false);
                     plugin.saveConfig();
                     player.sendMessage("§8§o(Double Jump disattivato in automatico)");
                 }
@@ -61,8 +61,8 @@ public class Commands implements CommandExecutor {
                 return true;
             }
 
-            boolean djState = !plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false);
-            plugin.getConfig().set("players." + player.getUniqueId() + ".dj", djState);
+            boolean djState = !plugin.getBuildsConfig().getBoolean("players." + player.getUniqueId() + ".dj", false);
+            plugin.getBuildsConfig().set("players." + player.getUniqueId() + ".dj", djState);
             plugin.saveConfig();
             player.sendMessage("§eDouble Jump " + (djState ? "§aattivato" : "§cdisattivato") + "§e.");
 
@@ -87,8 +87,8 @@ public class Commands implements CommandExecutor {
             if (args.length > 0) {
                 String sub = args[0].toLowerCase();
                 if (sub.equals("list")) {
-                    gm.clearSearch(player); // Resetta eventuali vecchie ricerche
-                    gm.openBuildMenu(player, 1);
+                    gm.clearSearch(player);
+                    gm.openCategoryMenu(player); // Apre la selezione invece del menu diretto
                     return true;
                 } else if (sub.equals("errors")) {
                     gm.showErrors(player);
@@ -120,8 +120,8 @@ public class Commands implements CommandExecutor {
         }
 
         if (cmdName.equals("lobby")) {
-            if (plugin.getConfig().contains("locations.lobby")) {
-                player.teleport((Location) plugin.getConfig().get("locations.lobby"));
+            if (plugin.getBuildsConfig().contains("locations.lobby")) {
+                player.teleport((Location) plugin.getBuildsConfig().get("locations.lobby"));
                 player.sendMessage("§aTeletrasportato alla Lobby!");
             } else {
                 player.sendMessage("§cLa lobby non è stata impostata. Usa /map setlobby");
@@ -149,7 +149,7 @@ public class Commands implements CommandExecutor {
                     player.sendMessage("§cID non valido."); return true;
                 }
 
-                if (!plugin.getConfig().contains("builds." + buildId)) {
+                if (!plugin.getBuildsConfig().contains("builds." + buildId)) {
                     player.sendMessage("§cLa build con ID " + buildId + " non esiste.");
                     return true;
                 }
@@ -169,7 +169,7 @@ public class Commands implements CommandExecutor {
 
             switch (args[0].toLowerCase()) {
                 case "setlobby":
-                    plugin.getConfig().set("locations.lobby", player.getLocation());
+                    plugin.getBuildsConfig().set("locations.lobby", player.getLocation());
                     plugin.saveConfig();
                     player.sendMessage("§aPunto di spawn della §l/lobby§a impostato qui!");
                     break;
@@ -179,7 +179,7 @@ public class Commands implements CommandExecutor {
                 case "confirm":
                     if (gm.hasPendingDelete(player)) {
                         int toDelete = gm.getPendingDelete(player);
-                        plugin.getConfig().set("builds." + toDelete, null);
+                        plugin.getBuildsConfig().set("builds." + toDelete, null);
                         plugin.saveConfig();
                         player.sendMessage("§aBuild ID '" + toDelete + "' eliminata.");
                         gm.removePendingDelete(player);
@@ -190,8 +190,8 @@ public class Commands implements CommandExecutor {
                     StringBuilder nameBuilder = new StringBuilder();
                     for (int i = 1; i < args.length; i++) nameBuilder.append(args[i]).append(" ");
                     int nextId = 1;
-                    if (plugin.getConfig().contains("builds")) {
-                        for (String key : plugin.getConfig().getConfigurationSection("builds").getKeys(false)) {
+                    if (plugin.getBuildsConfig().contains("builds")) {
+                        for (String key : plugin.getBuildsConfig().getConfigurationSection("builds").getKeys(false)) {
                             try { if (Integer.parseInt(key) >= nextId) nextId = Integer.parseInt(key) + 1; } catch (Exception ignored) {}
                         }
                     }
@@ -201,11 +201,11 @@ public class Commands implements CommandExecutor {
                     if (args.length < 3) { player.sendMessage("§cUsa: /map rename <id> <Nome>"); break; }
                     try {
                         int id = Integer.parseInt(args[1]);
-                        if (!plugin.getConfig().contains("builds." + id)) { player.sendMessage("§cID non trovato."); break; }
+                        if (!plugin.getBuildsConfig().contains("builds." + id)) { player.sendMessage("§cID non trovato."); break; }
                         StringBuilder renameBuilder = new StringBuilder();
                         for (int i = 2; i < args.length; i++) renameBuilder.append(args[i]).append(" ");
                         String newName = renameBuilder.toString().trim();
-                        plugin.getConfig().set("builds." + id + ".name", newName);
+                        plugin.getBuildsConfig().set("builds." + id + ".name", newName);
                         plugin.saveConfig();
                         player.sendMessage("§aNome cambiato in '" + newName + "'!");
                     } catch (Exception e) { player.sendMessage("§cL'ID deve essere un numero!"); }
@@ -214,8 +214,8 @@ public class Commands implements CommandExecutor {
                     if (args.length < 2) { player.sendMessage("§cUsa: /map update <id>"); break; }
                     try {
                         int id = Integer.parseInt(args[1]);
-                        if (!plugin.getConfig().contains("builds." + id)) { player.sendMessage("§cID non trovato."); break; }
-                        gm.saveBuild(player, id, plugin.getConfig().getString("builds." + id + ".name", "Sconosciuta"));
+                        if (!plugin.getBuildsConfig().contains("builds." + id)) { player.sendMessage("§cID non trovato."); break; }
+                        gm.saveBuild(player, id, plugin.getBuildsConfig().getString("builds." + id + ".name", "Sconosciuta"));
                         player.sendMessage("§eBlocchi aggiornati!");
                     } catch (Exception e) { player.sendMessage("§cL'ID deve essere un numero!"); }
                     break;
@@ -227,13 +227,13 @@ public class Commands implements CommandExecutor {
                     if (args.length < 2) { player.sendMessage("§cUsa: /map delete <id>"); break; }
                     try {
                         int id = Integer.parseInt(args[1]);
-                        if (!plugin.getConfig().contains("builds." + id)) { player.sendMessage("§cID non trovato."); break; }
+                        if (!plugin.getBuildsConfig().contains("builds." + id)) { player.sendMessage("§cID non trovato."); break; }
                         gm.setPendingDelete(player, id);
                         player.sendMessage("§cStai per eliminare l'ID " + id + ". Scrivi §l/map confirm");
                     } catch (Exception e) { player.sendMessage("§cID invalido!"); }
                     break;
                 case "setholo":
-                    plugin.getConfig().set("locations.hologram", player.getLocation().add(0, 2, 0));
+                    plugin.getBuildsConfig().set("locations.hologram", player.getLocation().add(0, 2, 0));
                     plugin.saveConfig();
                     plugin.getHologramManager().spawnOrUpdate();
                     player.sendMessage("§aOlogramma della Top 10 posizionato in aria!");

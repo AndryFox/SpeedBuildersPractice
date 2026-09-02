@@ -26,12 +26,15 @@ public class Database {
 
     public boolean connect() {
         try {
-            if (connection != null && !connection.isClosed()) return true;
+            // isValid(2) invia un ping invisibile di max 2 secondi. Se fallisce, ricrea la connessione.
+            if (connection != null && !connection.isClosed() && connection.isValid(2)) return true;
+
             synchronized (this) {
-                if (connection != null && !connection.isClosed()) return true;
+                if (connection != null && !connection.isClosed() && connection.isValid(2)) return true;
+
                 Class.forName("org.postgresql.Driver");
-                // URL format standard per PostgreSQL / Supabase
-                String url = "jdbc:postgresql://" + host + ":" + port + "/" + database + "?sslmode=require";
+                // Aggiunto tcpKeepAlive=true per evitare che Supabase chiuda il tunnel per inattività
+                String url = "jdbc:postgresql://" + host + ":" + port + "/" + database + "?sslmode=require&tcpKeepAlive=true";
                 connection = DriverManager.getConnection(url, user, password);
                 return true;
             }
@@ -120,5 +123,4 @@ public class Database {
         }
         return 0;
     }
-
 }
