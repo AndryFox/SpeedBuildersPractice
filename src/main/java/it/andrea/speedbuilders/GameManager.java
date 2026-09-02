@@ -230,25 +230,32 @@ public class GameManager {
         }
     }
 
-    public void startCountdown(Player player, boolean isRetry) {
+    public void startCountdown(Player player, int countdown) {
         playerStates.put(player, "COUNTDOWN");
         int buildId = currentBuild.getOrDefault(player, -1);
         String configName = buildId != -1 ? plugin.getConfig().getString("builds." + buildId + ".name", "Build Libera") : "Build Libera";
         final String buildName = configName;
 
         BukkitTask task = new BukkitRunnable() {
-            int count = isRetry ? 6 : 8; // Se è un retry parte da 6 (salta il nome), altrimenti 8
+            int count = countdown; // Usa 3 o 6 passato da Listeners
             float[] scale = {0.5f, 0.5f, 0.63f, 0.79f, 1.0f, 1.26f};
 
             @Override
             public void run() {
                 if (!player.isOnline() || !playerStates.getOrDefault(player, "").equals("COUNTDOWN")) { this.cancel(); return; }
-                if (count > 6) {
-                    player.sendTitle("", "§6" + buildName, 5, 25, 0); count--;
+
+                if (count > 3) {
+                    // Mostra il nome della mappa finché i secondi sono maggiori di 3
+                    player.sendTitle("", "§6" + buildName, 5, 25, 0);
+                    count--;
                 } else if (count > 0) {
+                    // Conto alla rovescia 3, 2, 1
                     player.sendTitle("", "§a" + count, 0, 25, 0);
-                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, scale[6 - count]); count--;
+                    int pitchIndex = Math.max(0, Math.min(5, 6 - count));
+                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, scale[pitchIndex]);
+                    count--;
                 } else {
+                    // Il tuo finale personalizzato
                     player.sendTitle("", "§cTempo esaurito!", 0, 20, 10);
                     player.playSound(player.getLocation(), Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
                     clearPlot(player.getWorld());
@@ -421,7 +428,7 @@ public class GameManager {
                     if (player.isOnline() && playerStates.getOrDefault(player, "").equals("WAITING")) {
                         loadBuild(player, buildId);
                         // Modifica questa riga dentro la BukkitRunnable di handlePerfect:
-                        startCountdown(player, false);
+                        startCountdown(player, 3);
                     }
                 }
             }.runTaskLater(plugin, 50L);

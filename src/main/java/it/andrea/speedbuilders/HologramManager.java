@@ -40,15 +40,37 @@ public class HologramManager {
                     leaderboardHolo.appendTextLine("§eI 10 giocatori con più WR");
                     leaderboardHolo.appendTextLine("");
 
-                    int pos = 1;
-                    for (Map.Entry<String, Integer> entry : top.entrySet()) {
-                        String color = (pos == 1) ? "§a" : (pos <= 3) ? "§b" : "§7";
-                        leaderboardHolo.appendTextLine(color + "#" + pos + " §f" + entry.getKey() + " §8- §e" + entry.getValue() + " WR");
-                        pos++;
-                    }
-
                     if (top.isEmpty()) {
                         leaderboardHolo.appendTextLine("§cNessun record trovato.");
+                    } else {
+                        // Ciclo per la generazione della Top 10
+                        int position = 1;
+                        for (Map.Entry<String, Integer> entry : top.entrySet()) { // Corretto: top.entrySet()
+                            String playerName = entry.getKey();
+                            int wrCount = entry.getValue();
+
+                            // Calcola la medaglia (Posizione)
+                            String medal;
+                            if (position == 1) {
+                                medal = "§e§l1°"; // Oro
+                            } else if (position == 2) {
+                                medal = "§f§l2°"; // Argento
+                            } else if (position == 3) {
+                                medal = "§6§l3°"; // Bronzo
+                            } else {
+                                medal = "§7" + position + "°"; // Dal 4° in poi, grigio normale
+                            }
+
+                            // Calcola il colore del nome in base al Ruolo
+                            String roleColor = getPlayerRoleColor(playerName, wrCount);
+
+                            // Costruisci la riga finale
+                            String line = medal + " §8| " + roleColor + playerName + " §8- §a" + wrCount + " WR";
+
+                            // Aggiungi la riga all'ologramma
+                            leaderboardHolo.appendTextLine(line); // Corretto: leaderboardHolo.appendTextLine
+                            position++;
+                        }
                     }
 
                     leaderboardHolo.appendTextLine("");
@@ -56,6 +78,29 @@ public class HologramManager {
                 });
             }
         }.runTaskAsynchronously(plugin);
+    }
+
+    private String getPlayerRoleColor(String playerName, int wrCount) {
+        if (playerName.equalsIgnoreCase("AndryFox_14")) return "§b"; // Il tuo ruolo Elite Fox
+
+        if (wrCount >= 100) return "§6";
+        if (wrCount >= 90) return "§e";
+        if (wrCount >= 80) return "§6";
+        if (wrCount >= 70) return "§c";
+        if (wrCount >= 60) return "§4";
+        if (wrCount >= 50) return "§c";
+        if (wrCount >= 45) return "§d";
+        if (wrCount >= 40) return "§5";
+        if (wrCount >= 35) return "§9";
+        if (wrCount >= 30) return "§1";
+        if (wrCount >= 25) return "§3";
+        if (wrCount >= 20) return "§2";
+        if (wrCount >= 15) return "§a";
+        if (wrCount >= 10) return "§1";
+        if (wrCount >= 6) return "§8";
+        if (wrCount >= 3) return "§7";
+        if (wrCount >= 1) return "§f";
+        return "§e"; // Newbie
     }
 
     private void startTask() {

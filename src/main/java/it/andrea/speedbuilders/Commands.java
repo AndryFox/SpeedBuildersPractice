@@ -29,13 +29,27 @@ public class Commands implements CommandExecutor {
 
         // NUOVO COMANDO: /fly
         if (cmdName.equals("fly")) {
-            if (player.hasPermission("speedbuilders.fly")) {
-                boolean isFlying = player.getAllowFlight();
-                player.setAllowFlight(!isFlying);
-                player.setFlying(!isFlying);
-                player.sendMessage("§eVolo " + (!isFlying ? "§aattivato" : "§cdisattivato") + "§e.");
+            if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+                player.sendMessage("§cSei in Creativa, il volo è già forzato dal gioco!");
+                return true;
+            }
+
+            if (player.isFlying()) {
+                player.setAllowFlight(false);
+                player.setFlying(false);
+                player.sendMessage("§cVolo disattivato.");
             } else {
-                player.sendMessage("§cNon hai il permesso per volare.");
+                // Attiva il volo
+                player.setAllowFlight(true);
+                player.setFlying(true);
+                player.sendMessage("§aVolo attivato!");
+
+                // Spegne il Double Jump in automatico per evitare conflitti
+                if (plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
+                    plugin.getConfig().set("players." + player.getUniqueId() + ".dj", false);
+                    plugin.saveConfig();
+                    player.sendMessage("§8§o(Double Jump disattivato in automatico)");
+                }
             }
             return true;
         }
@@ -46,13 +60,25 @@ public class Commands implements CommandExecutor {
                 player.sendMessage("§cNon puoi usare il Double Jump mentre giochi!");
                 return true;
             }
+
             boolean djState = !plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false);
             plugin.getConfig().set("players." + player.getUniqueId() + ".dj", djState);
             plugin.saveConfig();
             player.sendMessage("§eDouble Jump " + (djState ? "§aattivato" : "§cdisattivato") + "§e.");
 
-            // Per permettere subito il salto
-            if (djState) player.setAllowFlight(true);
+            if (djState) {
+                player.setAllowFlight(true);
+                // Spegne il Volo in automatico se si accende il Double Jump
+                if (player.isFlying()) {
+                    player.setFlying(false);
+                    player.sendMessage("§8§o(Volo disattivato in automatico)");
+                }
+            } else {
+                // Se disattivi il DJ e non stai volando, toglie l'allowFlight
+                if (!player.isFlying()) {
+                    player.setAllowFlight(false);
+                }
+            }
             return true;
         }
 
@@ -69,6 +95,11 @@ public class Commands implements CommandExecutor {
                     return true;
                 } else if (sub.equals("view")) {
                     gm.viewBuild(player);
+                    return true;
+                } else if (sub.equals("leave")) { // <-- ECCO LA PARTE DA AGGIUNGERE
+                    // Resetta il giocatore e lo manda alla lobby
+                    gm.resetPlayer(player);
+                    player.performCommand("lobby");
                     return true;
                 }
             }

@@ -15,8 +15,6 @@
     </properties>
 
     <repositories>
-
-        <!-- Aggiungilo dentro <repositories> -->
         <repository>
             <id>codemc-repo</id>
             <url>https://repo.codemc.io/repository/maven-public/</url>
@@ -29,8 +27,6 @@
     </repositories>
 
     <dependencies>
-
-        <!-- Aggiungilo dentro <dependencies> -->
         <dependency>
             <groupId>com.gmail.filoghost.holographicdisplays</groupId>
             <artifactId>holographicdisplays-api</artifactId>
@@ -38,7 +34,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- API Spigot (già presente) -->
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
@@ -46,7 +41,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Driver PostgreSQL per Supabase -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
@@ -55,7 +49,6 @@
         </dependency>
     </dependencies>
 
-    <!-- Configurazione compilazione e iniezione librerie -->
     <build>
         <plugins>
             <!-- Maven Compiler -->
@@ -69,7 +62,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Maven Shade Plugin -->
+            <!-- Maven Shade Plugin (Esporta il file completo con Supabase nel server) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -82,13 +75,11 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <relocations>
-                                <!-- Evita conflitti rinominando il package del driver internamente -->
-                                <relocation>
-                                    <pattern>org.postgresql</pattern>
-                                    <shadedPattern>it.andrea.speedbuilders.libs.postgresql</shadedPattern>
-                                </relocation>
-                            </relocations>
+                            <!-- Percorso corretto della tua cartella plugins -->
+                            <outputFile>C:\Users\liron\Desktop\Minecraft\Server SpeedBuilders Practice\plugins\SpeedBuildersPractice.jar</outputFile>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
                         </configuration>
                     </execution>
                 </executions>

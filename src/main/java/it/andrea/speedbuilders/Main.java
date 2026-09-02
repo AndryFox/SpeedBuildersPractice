@@ -61,10 +61,17 @@ public class Main extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Disconnette il database per non lasciare connessioni appese
         if (database != null) {
             database.disconnect();
         }
-        if (hologramManager != null) hologramManager.remove();
+
+        // Rimuove l'ologramma per evitare cloni fantasma al reload
+        if (hologramManager != null) {
+            hologramManager.remove();
+        }
+
+        getLogger().info("SpeedBuilders disattivato correttamente!");
     }
 
     public GameManager getGameManager() { return gameManager; }

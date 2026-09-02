@@ -28,6 +28,7 @@ import java.util.List;
 public class Listeners implements Listener {
 
     private final Main plugin;
+    private final java.util.HashMap<java.util.UUID, Long> breakCooldown = new java.util.HashMap<>(); // <-- AGGIUNGI QUESTA
 
     public Listeners(Main plugin) {
         this.plugin = plugin;
@@ -182,12 +183,10 @@ public class Listeners implements Listener {
                         GameManager gm = plugin.getGameManager();
                         int buildId = gm.getCurrentBuild(player);
                         if (buildId != -1) {
-                            // Se lo stato è IDLE è il primo click (8s), altrimenti è un riavvio veloce (6s)
-                            boolean isRetry = !gm.getState(player).equals("IDLE");
 
                             gm.forceReset(player);
                             gm.loadBuild(player, buildId);
-                            gm.startCountdown(player, isRetry);
+                            gm.startCountdown(player, 3); // <-- Parte in 3 secondi
                         } else {
                             player.sendMessage("§cDevi prima caricare una build con /map load <id>!");
                         }
@@ -241,9 +240,40 @@ public class Listeners implements Listener {
 
         if (!gm.getState(player).equals("PLAYING")) { event.setCancelled(true); return; }
 
-        event.setDropItems(false);
+        // === FIX DOPPIA ROTTURA (Cooldown simulazione Creativa) ===
+        long now = System.currentTimeMillis();
+        if (breakCooldown.containsKey(player.getUniqueId()) && (now - breakCooldown.get(player.getUniqueId()) < 55)) { // <-- CAMBIA DA 150 A 250 (o 300)
+            event.setCancelled(true);
+            return;
+        }
+        breakCooldown.put(player.getUniqueId(), now);
+        // ==============================================
 
-        // Usa il traduttore che abbiamo creato in GameManager
+        event.setDropItems(false); // Fondamentale per evitare drop doppi!
+
+        // === FIX PORTE: Distrugge entrambe le metà e dà 1 solo oggetto ===
+        Material type = block.getType();
+        if (type.name().contains("DOOR") && !type.name().contains("TRAP")) {
+            event.setCancelled(true); // Blocca la rottura buggata di Minecraft
+
+            byte data = block.getData();
+            Block top = (data >= 8) ? block : block.getRelative(org.bukkit.block.BlockFace.UP);
+            Block bottom = (data >= 8) ? block.getRelative(org.bukkit.block.BlockFace.DOWN) : block;
+
+            // Distrugge entrambe le metà istantaneamente
+            if (top.getType() == type) top.setType(Material.AIR);
+            if (bottom.getType() == type) bottom.setType(Material.AIR);
+
+            Material dropMat = gm.getInventoryItemMaterial(type);
+            player.getInventory().addItem(new ItemStack(dropMat, 1, (short)0));
+
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (gm.checkBuildPerfect(player)) gm.handlePerfect(player);
+            });
+            return;
+        }
+        // =================================================================
+
         Material dropMat = gm.getInventoryItemMaterial(block.getType());
         byte dropData = block.getData();
         boolean shouldDrop = true;
@@ -253,9 +283,8 @@ public class Listeners implements Listener {
             dropData = (byte) (dropData % 4);
         } else if (dropMat.name().contains("STEP") || dropMat.name().contains("SLAB")) {
             dropData = (byte) (dropData % 8);
-        } else if (dropMat.name().contains("DOOR") || dropMat == Material.BED) {
+        } else if (dropMat == Material.BED) {
             dropData = 0;
-            // Se sta rompendo la parte alta della porta non droppa un secondo oggetto
             if (block.getData() >= 8) shouldDrop = false;
         }
 
@@ -323,6 +352,10 @@ public class Listeners implements Listener {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p view");
             }
+            else if (npcName.equalsIgnoreCase("/leave")) {
+                event.setCancelled(true);
+                event.getPlayer().performCommand("p leave");
+            }
         }
     }
 
@@ -378,7 +411,7 @@ public class Listeners implements Listener {
 
                     gm.forceReset(player);
                     gm.loadBuild(player, id);
-                    gm.startCountdown(player, false);
+                    gm.startCountdown(player, 6); // <-- Parte in 6 secondi
                 } catch (Exception ignored) {}
             }
         }
