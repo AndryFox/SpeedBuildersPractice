@@ -110,8 +110,9 @@ public class ScanAllMineplexCommand implements CommandExecutor {
         List<String> uniqueBlocks = new ArrayList<>();
         List<String> uniqueMobs = new ArrayList<>();
 
-        for (int y = baseY; y < 15; y++) {
-            for (int x = -3; x <= 3; x++) {
+        // ORDINE RICHIESTO: Prima asse X (West->East), poi Y (Basso->Alto)
+        for (int x = -3; x <= 3; x++) {
+            for (int y = baseY; y < 15; y++) {
                 for (int z = -3; z <= 3; z++) {
                     Block b = world.getBlockAt(centerX + x, y, centerZ + z);
 

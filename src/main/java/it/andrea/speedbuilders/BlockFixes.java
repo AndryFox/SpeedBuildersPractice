@@ -43,6 +43,11 @@ public class BlockFixes implements Listener {
             Block clicked = event.getClickedBlock();
             if (clicked == null) return;
 
+            // Innesca il check di vittoria se accendi o spegni un sensore solare
+            if (clicked.getType() == Material.DAYLIGHT_DETECTOR || clicked.getType() == Material.DAYLIGHT_DETECTOR_INVERTED) {
+                triggerPerfectCheck(event.getPlayer());
+            }
+
             if (event.getPlayer().getGameMode() != GameMode.CREATIVE) {
                 String mat = clicked.getType().name();
                 if (mat.contains("CHEST") || mat.contains("FURNACE") || mat.contains("WORKBENCH") ||
@@ -60,12 +65,9 @@ public class BlockFixes implements Listener {
             if (item != null) {
                 Block placeLoc = clicked.getRelative(event.getBlockFace());
 
-                // Gestione universale per Porte e Vasi (rimosso il vecchio limite del VETRO)
                 if (item.getType() == Material.FLOWER_POT_ITEM || item.getType().name().contains("DOOR")) {
 
-                    // Controlla se stai cercando di piazzare fuori dal 7x7
                     if (!(placeLoc.getX() >= -3 && placeLoc.getX() <= 3 && placeLoc.getZ() >= -3 && placeLoc.getZ() <= 3 && placeLoc.getY() > 100)) {
-                        // Blocca l'azione solo se sei in survival
                         if (event.getPlayer().getGameMode() != GameMode.CREATIVE) {
                             event.setCancelled(true);
                             event.getPlayer().sendMessage("§cPuoi costruire solo nel riquadro nero!");

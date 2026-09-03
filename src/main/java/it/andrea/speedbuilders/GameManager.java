@@ -800,16 +800,20 @@ public class GameManager {
 
                     if (savedMat == Material.GLOWING_REDSTONE_ORE && blockMat == Material.REDSTONE_ORE) savedMat = Material.REDSTONE_ORE;
                     if (savedMat == Material.REDSTONE_ORE && blockMat == Material.GLOWING_REDSTONE_ORE) blockMat = Material.REDSTONE_ORE;
-                    if (savedMat == Material.DAYLIGHT_DETECTOR_INVERTED && blockMat == Material.DAYLIGHT_DETECTOR) savedMat = Material.DAYLIGHT_DETECTOR;
-                    if (savedMat == Material.DAYLIGHT_DETECTOR && blockMat == Material.DAYLIGHT_DETECTOR_INVERTED) blockMat = Material.DAYLIGHT_DETECTOR;
 
                     if (blockMat != savedMat) return false;
 
                     boolean ignoreData = false;
                     if (savedMat == Material.SKULL || savedMat == Material.SKULL_ITEM) ignoreData = true;
                     if (savedMat.name().contains("PLATE")) ignoreData = true;
-                    if (savedMat == Material.DAYLIGHT_DETECTOR) ignoreData = true;
+                    if (savedMat == Material.DAYLIGHT_DETECTOR || savedMat == Material.DAYLIGHT_DETECTOR_INVERTED) ignoreData = true;
                     if (cat.equals("FearGames") && (savedMat == Material.PUMPKIN || savedMat == Material.JACK_O_LANTERN)) ignoreData = true;
+
+                    // Fix Decadimento Foglie
+                    if (savedMat == Material.LEAVES || savedMat == Material.LEAVES_2) {
+                        if ((block.getData() % 4) != (savedData % 4)) return false;
+                        ignoreData = true;
+                    }
 
                     if (!ignoreData && block.getData() != savedData) {
                         return false;
@@ -848,7 +852,6 @@ public class GameManager {
 
                 Material savedMat = Material.valueOf(rawMat);
                 if (savedMat == Material.GLOWING_REDSTONE_ORE) savedMat = Material.REDSTONE_ORE;
-                if (savedMat == Material.DAYLIGHT_DETECTOR_INVERTED) savedMat = Material.DAYLIGHT_DETECTOR;
                 expected.put(parts[0] + ";" + savedY + ";" + parts[2], savedMat.name() + ";" + parts[4]);
             }
         }
@@ -880,15 +883,27 @@ public class GameManager {
                             Material blockMat = b.getType();
 
                             if (blockMat == Material.GLOWING_REDSTONE_ORE) blockMat = Material.REDSTONE_ORE;
-                            if (blockMat == Material.DAYLIGHT_DETECTOR_INVERTED) blockMat = Material.DAYLIGHT_DETECTOR;
 
                             boolean ignoreData = false;
                             if (eMat == Material.SKULL || eMat == Material.SKULL_ITEM) ignoreData = true;
                             if (eMat.name().contains("PLATE")) ignoreData = true;
-                            if (eMat == Material.DAYLIGHT_DETECTOR) ignoreData = true;
+                            if (eMat == Material.DAYLIGHT_DETECTOR || eMat == Material.DAYLIGHT_DETECTOR_INVERTED) ignoreData = true;
                             if (cat.equals("FearGames") && (eMat == Material.PUMPKIN || eMat == Material.JACK_O_LANTERN)) ignoreData = true;
 
-                            if (blockMat != eMat || (!ignoreData && b.getData() != eData)) {
+                            boolean error = false;
+                            if (blockMat != eMat) {
+                                error = true;
+                            } else {
+                                if (eMat == Material.LEAVES || eMat == Material.LEAVES_2) {
+                                    if ((b.getData() % 4) != (eData % 4)) error = true;
+                                    ignoreData = true;
+                                }
+                                if (!ignoreData && b.getData() != eData) {
+                                    error = true;
+                                }
+                            }
+
+                            if (error) {
                                 player.sendBlockChange(b.getLocation(), Material.STAINED_GLASS, (byte) 14);
                                 errorsCount++;
                             }
