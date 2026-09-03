@@ -34,15 +34,32 @@ public class GameManager {
     private final HashMap<Player, Boolean> awaitingSearch = new HashMap<>();
     private final HashMap<Player, String> activeSearch = new HashMap<>();
     private final HashMap<Player, String> currentCategory = new HashMap<>();
+    private final HashMap<Player, Boolean> continuousRandom = new HashMap<>();
 
     public void setAwaitingSearch(Player p, boolean val) { if (val) awaitingSearch.put(p, true); else awaitingSearch.remove(p); }
     public boolean isAwaitingSearch(Player p) { return awaitingSearch.containsKey(p); }
     public void setActiveSearch(Player p, String search) { activeSearch.put(p, search); }
     public void clearSearch(Player p) { activeSearch.remove(p); }
     public String getCurrentCategory(Player player) { return currentCategory.getOrDefault(player, "FearGames"); }
+    public void setContinuousRandom(Player p, boolean val) { if (val) continuousRandom.put(p, true); else continuousRandom.remove(p); }
+    public boolean isContinuousRandom(Player p) { return continuousRandom.getOrDefault(p, false); }
+    public boolean hasActiveSearch(Player p) { return activeSearch.containsKey(p); }
+
 
     public GameManager(Main plugin) {
         this.plugin = plugin;
+    }
+
+    public int getRandomBuildId(String category) {
+        FileConfiguration config = getBuildConfig(category);
+        if (config.contains("builds")) {
+            List<String> keys = new java.util.ArrayList<>(config.getConfigurationSection("builds").getKeys(false));
+            if (!keys.isEmpty()) {
+                String randomKey = keys.get(new java.util.Random().nextInt(keys.size()));
+                try { return Integer.parseInt(randomKey); } catch (Exception ignored) {}
+            }
+        }
+        return -1;
     }
 
     public Material getInventoryItemMaterial(Material blockMat) {
@@ -97,6 +114,7 @@ public class GameManager {
     public void resetPlayer(Player player) {
         forceReset(player);
         playerStates.put(player, "IDLE");
+        continuousRandom.remove(player); // <- Aggiunto questo
         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
     }
 
@@ -445,7 +463,12 @@ public class GameManager {
                 @Override
                 public void run() {
                     if (player.isOnline() && playerStates.getOrDefault(player, "").equals("WAITING")) {
-                        loadBuild(player, buildId, getCurrentCategory(player));
+                        int nextBuildId = buildId;
+                        if (isContinuousRandom(player)) {
+                            int randomId = getRandomBuildId(cat);
+                            if (randomId != -1) nextBuildId = randomId;
+                        }
+                        loadBuild(player, nextBuildId, cat);
                         startCountdown(player, 3);
                     }
                 }
@@ -559,12 +582,19 @@ public class GameManager {
         org.bukkit.inventory.meta.ItemMeta searchMeta = searchBtn.getItemMeta();
         searchMeta.setDisplayName("§e§lCerca Build");
         if (filter == null) {
-            searchMeta.setLore(java.util.Arrays.asList("§7Clicca qui per cercare", "§7una build scrivendo il nome."));
+            searchMeta.setLore(java.util.Arrays.asList("§7Tasto Sinistro: §fCerca una build"));
         } else {
-            searchMeta.setLore(java.util.Arrays.asList("§7Filtro attivo: §f" + filter, "", "§eClicca per cercare altro."));
+            searchMeta.setLore(java.util.Arrays.asList("§7Filtro attivo: §f" + filter, "", "§7Tasto Sinistro: §fNuova ricerca", "§7Tasto Destro: §cRimuovi filtro"));
         }
         searchBtn.setItemMeta(searchMeta);
-        inv.setItem(49, searchBtn);
+        inv.setItem(48, searchBtn); // Spostato a sinistra
+
+        ItemStack randomBtn = new ItemStack(Material.ENDER_PEARL);
+        org.bukkit.inventory.meta.ItemMeta randomMeta = randomBtn.getItemMeta();
+        randomMeta.setDisplayName("§d§lBuild Casuale");
+        randomMeta.setLore(java.util.Arrays.asList("§7Tasto Sinistro (SX): §aRandom Continua", "§8(Cambia build ad ogni completamento)", "", "§7Tasto Destro (DX): §eRandom Singola", "§8(Sceglie una build e la ripete all'infinito)"));
+        randomBtn.setItemMeta(randomMeta);
+        inv.setItem(50, randomBtn); // Posizionato a destra
 
         player.openInventory(inv);
     }

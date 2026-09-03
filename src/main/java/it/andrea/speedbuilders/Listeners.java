@@ -358,10 +358,40 @@ public class Listeners implements Listener {
                 if (split.length > 1) currentPage = Integer.parseInt(split[1].trim());
             } catch (Exception ignored) {}
 
+            // Gestione del Tasto Cerca (Reset con tasto destro)
             if (event.getCurrentItem().getType() == Material.NAME_TAG && name.equals("§e§lCerca Build")) {
+                if (event.isRightClick() && gm.hasActiveSearch(player)) {
+                    gm.clearSearch(player);
+                    gm.openBuildMenu(player, currentPage, category);
+                } else {
+                    player.closeInventory();
+                    gm.setAwaitingSearch(player, true);
+                    player.sendMessage("§aScrivi in chat la parola da cercare! (Scrivi 'annulla' per uscire)");
+                }
+                return;
+            }
+
+            // Gestione del Tasto Random
+            if (event.getCurrentItem().getType() == Material.ENDER_PEARL && name.equals("§d§lBuild Casuale")) {
+                int randomId = gm.getRandomBuildId(category);
+                if (randomId == -1) {
+                    player.sendMessage("§cNessuna build trovata in questa categoria!");
+                    return;
+                }
+
                 player.closeInventory();
-                gm.setAwaitingSearch(player, true);
-                player.sendMessage("§aScrivi in chat la parola da cercare!");
+
+                if (event.isLeftClick()) {
+                    gm.setContinuousRandom(player, true);
+                    player.sendMessage("§aModalità Random Continua attivata!");
+                } else {
+                    gm.setContinuousRandom(player, false);
+                    player.sendMessage("§eModalità Random Singola attivata!");
+                }
+
+                gm.forceReset(player);
+                gm.loadBuild(player, randomId, category);
+                gm.startCountdown(player, 6);
                 return;
             }
 
@@ -374,11 +404,14 @@ public class Listeners implements Listener {
             }
 
             List<String> lore = event.getCurrentItem().getItemMeta().getLore();
-            if (lore != null && !lore.isEmpty()) {
+            if (lore != null && !lore.isEmpty() && lore.get(0).contains("ID: ")) {
                 String rawId = org.bukkit.ChatColor.stripColor(lore.get(0)).replace("ID: ", "").trim();
                 try {
                     int id = Integer.parseInt(rawId);
                     player.closeInventory();
+
+                    // Se clicchi manualmente una build, la modalità continua si spegne
+                    gm.setContinuousRandom(player, false);
 
                     gm.forceReset(player);
                     gm.loadBuild(player, id, category);
