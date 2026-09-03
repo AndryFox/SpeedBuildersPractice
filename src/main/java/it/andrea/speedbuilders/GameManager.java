@@ -108,7 +108,7 @@ public class GameManager {
             return;
         }
 
-        practiceWorld.setDifficulty(Difficulty.PEACEFUL);
+        practiceWorld.setDifficulty(Difficulty.NORMAL);
         practiceWorld.setGameRuleValue("doMobSpawning", "false");
         practiceWorld.setGameRuleValue("doDaylightCycle", "false");
         practiceWorld.setGameRuleValue("announceAdvancements", "false");
@@ -271,14 +271,16 @@ public class GameManager {
                     int x = Integer.parseInt(parts[0]);
                     int y = Integer.parseInt(parts[1]);
                     int z = Integer.parseInt(parts[2]);
-                    Material material = Material.valueOf(parts[3]);
-                    byte data = Byte.parseByte(parts[4]);
 
-                    // Salta il pavimento (già messo da generateFloor) e abbassa la build di 1
                     if (category.equals("Mineplex")) {
                         if (y == 1) continue;
                         y = y - 1;
                     }
+
+                    if (parts[3].startsWith("MOB_")) continue; // <--- Aggiunto (i mob li piazza il giocatore!)
+
+                    Material material = Material.valueOf(parts[3]);
+                    byte data = Byte.parseByte(parts[4]);
 
                     Block block = world.getBlockAt(x, 100 + y, z);
                     block.setType(material); block.setData(data);
@@ -299,6 +301,7 @@ public class GameManager {
                 }
             }
         }
+        plugin.getMobManager().clearMobs(world);
     }
 
     public void startCountdown(Player player, int countdown) {
@@ -640,9 +643,16 @@ public class GameManager {
             if (parts.length == 5) {
                 if (cat.equals("Mineplex") && Integer.parseInt(parts[1]) == 1) continue;
 
-                Material material = Material.valueOf(parts[3]);
+                String rawMat = parts[3];
                 byte data = Byte.parseByte(parts[4]);
 
+                // Intercetta il Mob
+                if (rawMat.startsWith("MOB_")) {
+                    blockCounts.put(rawMat, blockCounts.getOrDefault(rawMat, 0) + 1);
+                    continue;
+                }
+
+                Material material = Material.valueOf(rawMat);
                 if ((material.name().contains("DOOR") || material == Material.BED_BLOCK || material == Material.DOUBLE_PLANT) && data >= 8) continue;
 
                 ItemStack normalized = normalizeItem(material, data, cat);
@@ -660,21 +670,32 @@ public class GameManager {
             for (String h : hotbar) {
                 if (!h.equals("AIR;0")) {
                     String[] matDataRaw = h.split(";");
-                    Material rawMat = Material.valueOf(matDataRaw[0]);
-                    byte rawData = Byte.parseByte(matDataRaw[1]);
+                    String rawMat = matDataRaw[0];
 
-                    ItemStack normalized = normalizeItem(rawMat, rawData, cat);
+                    if (rawMat.startsWith("MOB_")) {
+                        if (blockCounts.containsKey(rawMat)) {
+                            ItemStack egg = plugin.getMobManager().getMobEgg(rawMat.substring(4));
+                            int totalNeeded = blockCounts.get(rawMat);
+                            egg.setAmount(Math.min(totalNeeded, 64));
+                            player.getInventory().setItem(slotIndex++, egg);
+
+                            int leftOver = totalNeeded - egg.getAmount();
+                            if (leftOver > 0) blockCounts.put(rawMat, leftOver);
+                            else blockCounts.remove(rawMat);
+                        }
+                        continue;
+                    }
+
+                    byte rawData = Byte.parseByte(matDataRaw[1]);
+                    ItemStack normalized = normalizeItem(Material.valueOf(rawMat), rawData, cat);
                     if (normalized != null) {
                         String key = normalized.getType().name() + ";" + normalized.getDurability();
-
                         if (blockCounts.containsKey(key)) {
                             int totalNeeded = blockCounts.get(key);
                             int toPutInSlot = Math.min(totalNeeded, 64);
+                            player.getInventory().setItem(slotIndex++, new ItemStack(normalized.getType(), toPutInSlot, normalized.getDurability()));
+
                             int leftOver = totalNeeded - toPutInSlot;
-
-                            player.getInventory().setItem(slotIndex, new ItemStack(normalized.getType(), toPutInSlot, normalized.getDurability()));
-                            slotIndex++;
-
                             if (leftOver > 0) blockCounts.put(key, leftOver);
                             else blockCounts.remove(key);
                         }
@@ -683,9 +704,17 @@ public class GameManager {
             }
         }
 
+        // Rimanenze
         for (Map.Entry<String, Integer> entry : blockCounts.entrySet()) {
-            String[] matData = entry.getKey().split(";");
-            player.getInventory().addItem(new ItemStack(Material.valueOf(matData[0]), entry.getValue(), Short.parseShort(matData[1])));
+            String key = entry.getKey();
+            if (key.startsWith("MOB_")) {
+                ItemStack egg = plugin.getMobManager().getMobEgg(key.substring(4));
+                egg.setAmount(entry.getValue());
+                player.getInventory().addItem(egg);
+            } else {
+                String[] matData = key.split(";");
+                player.getInventory().addItem(new ItemStack(Material.valueOf(matData[0]), entry.getValue(), Short.parseShort(matData[1])));
+            }
         }
     }
 
@@ -705,6 +734,11 @@ public class GameManager {
                     if (world.getBlockAt(x, 100 + y, z).getType() != Material.AIR) blocksInArena++;
                 }
             }
+        }
+
+        // Conta i Mob nell'arena
+        for (org.bukkit.entity.Entity ent : world.getEntities()) {
+            if ("SpeedBuildersMob".equals(ent.getCustomName())) blocksInArena++;
         }
 
         int expectedBlocks = 0;
@@ -728,8 +762,25 @@ public class GameManager {
                         savedY = savedY - 1;
                     }
 
+                    String savedMatStr = parts[3];
+
+                    // Controllo Mob
+                    if (savedMatStr.startsWith("MOB_")) {
+                        org.bukkit.entity.EntityType expectedType = plugin.getMobManager().getEntityType(savedMatStr.substring(4));
+                        boolean found = false;
+                        Location checkLoc = new Location(world, Integer.parseInt(parts[0]) + 0.5, 100 + savedY + 0.5, Integer.parseInt(parts[2]) + 0.5);
+                        for (org.bukkit.entity.Entity ent : world.getNearbyEntities(checkLoc, 0.5, 0.5, 0.5)) {
+                            if ("SpeedBuildersMob".equals(ent.getCustomName()) && ent.getType() == expectedType) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) return false;
+                        continue;
+                    }
+
                     Block block = world.getBlockAt(Integer.parseInt(parts[0]), 100 + savedY, Integer.parseInt(parts[2]));
-                    Material savedMat = Material.valueOf(parts[3]);
+                    Material savedMat = Material.valueOf(savedMatStr);
                     byte savedData = Byte.parseByte(parts[4]);
                     Material blockMat = block.getType();
 
@@ -775,10 +826,15 @@ public class GameManager {
                     savedY = savedY - 1;
                 }
 
-                Material savedMat = Material.valueOf(parts[3]);
+                String rawMat = parts[3];
+                if (rawMat.startsWith("MOB_")) {
+                    expected.put(parts[0] + ";" + savedY + ";" + parts[2], rawMat + ";" + parts[4]);
+                    continue;
+                }
+
+                Material savedMat = Material.valueOf(rawMat);
                 if (savedMat == Material.GLOWING_REDSTONE_ORE) savedMat = Material.REDSTONE_ORE;
                 if (savedMat == Material.DAYLIGHT_DETECTOR_INVERTED) savedMat = Material.DAYLIGHT_DETECTOR;
-
                 expected.put(parts[0] + ";" + savedY + ";" + parts[2], savedMat.name() + ";" + parts[4]);
             }
         }
@@ -797,6 +853,13 @@ public class GameManager {
                             player.sendBlockChange(b.getLocation(), Material.STAINED_GLASS, (byte) 14);
                             errorsCount++;
                         } else {
+                            if (exp.startsWith("MOB_")) {
+                                player.sendBlockChange(b.getLocation(), Material.STAINED_GLASS, (byte) 14);
+                                errorsCount++;
+                                expected.remove(locKey);
+                                continue;
+                            }
+
                             String[] p = exp.split(";");
                             Material eMat = Material.valueOf(p[0]);
                             byte eData = Byte.parseByte(p[1]);
@@ -822,14 +885,38 @@ public class GameManager {
             }
         }
 
+        // Cerca mob errati o fuori posizione
+        for (org.bukkit.entity.Entity ent : world.getEntities()) {
+            if ("SpeedBuildersMob".equals(ent.getCustomName())) {
+                int eX = ent.getLocation().getBlockX();
+                int eY = ent.getLocation().getBlockY() - 100;
+                int eZ = ent.getLocation().getBlockZ();
+                String locKey = eX + ";" + eY + ";" + eZ;
+                String exp = expected.get(locKey);
+
+                if (exp == null || !exp.startsWith("MOB_") || plugin.getMobManager().getEntityType(exp.substring(4)) != ent.getType()) {
+                    player.sendBlockChange(ent.getLocation(), Material.STAINED_GLASS, (byte) 14);
+                    errorsCount++;
+                }
+                if (exp != null && exp.startsWith("MOB_") && plugin.getMobManager().getEntityType(exp.substring(4)) == ent.getType()) {
+                    expected.remove(locKey);
+                }
+            }
+        }
+
         for (Map.Entry<String, String> entry : expected.entrySet()) {
             String[] loc = entry.getKey().split(";");
             String[] matData = entry.getValue().split(";");
-
             org.bukkit.Location bLoc = new org.bukkit.Location(world, Integer.parseInt(loc[0]), 100 + Integer.parseInt(loc[1]), Integer.parseInt(loc[2]));
+
+            if (matData[0].startsWith("MOB_")) {
+                player.sendBlockChange(bLoc, Material.STAINED_GLASS, (byte) 14);
+                errorsCount++;
+                continue;
+            }
+
             Material eMat = Material.valueOf(matData[0]);
             byte eData = Byte.parseByte(matData[1]);
-
             player.sendBlockChange(bLoc, eMat, eData);
             errorsCount++;
         }

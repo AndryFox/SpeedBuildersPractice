@@ -11,6 +11,7 @@ public class Main extends JavaPlugin {
     private GameManager gameManager;
     private Database database;
     private HologramManager hologramManager;
+    private MobManager mobManager;
 
     // Dichiarazione dei file custom
     private FileConfiguration fearConfig;
@@ -68,10 +69,10 @@ public class Main extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        this.hologramManager = new HologramManager(this);
 
-        // Inizializza il gestore della logica
+        this.hologramManager = new HologramManager(this);
         this.gameManager = new GameManager(this);
+        this.mobManager = new MobManager(this);
 
         // Registra i comandi
         Commands cmds = new Commands(this);
@@ -89,6 +90,7 @@ public class Main extends JavaPlugin {
         // Registra gli eventi
         getServer().getPluginManager().registerEvents(new Listeners(this), this);
         getServer().getPluginManager().registerEvents(new BlockFixes(this), this);
+        getServer().getPluginManager().registerEvents(mobManager, this);
     }
 
     @Override
@@ -110,6 +112,7 @@ public class Main extends JavaPlugin {
     public GameManager getGameManager() { return gameManager; }
     public Database getDatabase() { return database; }
     public HologramManager getHologramManager() { return hologramManager; }
+    public MobManager getMobManager() { return mobManager; }
 
     public FileConfiguration getFearConfig() { return fearConfig; }
     public FileConfiguration getMineplexConfig() { return mineplexConfig; }

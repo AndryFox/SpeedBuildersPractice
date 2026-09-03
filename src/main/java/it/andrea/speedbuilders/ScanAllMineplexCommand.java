@@ -110,20 +110,31 @@ public class ScanAllMineplexCommand implements CommandExecutor {
 
         // ORDINE INVERTITO: Prima la Y (dal basso verso l'alto)
         for (int y = baseY; y < 15; y++) {
-            // Poi la X (da Ovest verso Est, ovvero da -3 a +3)
             for (int x = -3; x <= 3; x++) {
-                // Infine la Z
                 for (int z = -3; z <= 3; z++) {
                     Block b = world.getBlockAt(centerX + x, y, centerZ + z);
 
-                    if (b.getType() == Material.AIR || b.getType() == Material.SPONGE || b.getType() == Material.WALL_SIGN || b.getType() == Material.SIGN_POST) continue;
+                    if (b.getType() == Material.AIR || b.getType() == Material.SPONGE) continue;
 
                     String mat = b.getType().name();
                     byte data = b.getData();
 
+                    // Se è un cartello, legge il testo e lo converte in MOB!
+                    if (b.getType() == Material.WALL_SIGN || b.getType() == Material.SIGN_POST) {
+                        Sign signState = (Sign) b.getState();
+                        String text = (signState.getLine(0) + "_" + signState.getLine(1) + "_" + signState.getLine(2))
+                                .replace(" ", "_").replaceAll("_+", "_").replaceAll("§.", "").trim().toUpperCase();
+
+                        if (text.startsWith("_")) text = text.substring(1);
+                        if (text.endsWith("_")) text = text.substring(0, text.length() - 1);
+                        if (text.isEmpty()) text = "PIG"; // Sicurezza
+
+                        mat = "MOB_" + text;
+                        data = 0;
+                    }
+
                     blockList.add(x + ";" + (y - baseY + 1) + ";" + z + ";" + mat + ";" + data);
 
-                    // Aggiunge alla hotbar SOLO se NON è il pavimento (y > baseY)
                     if (y > baseY) {
                         if (uniqueMaterials.size() < 9) uniqueMaterials.add(mat + ";" + data);
                     }
