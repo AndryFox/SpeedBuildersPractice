@@ -468,21 +468,24 @@ public class GameManager {
             int id = buildIds.get(i);
             String name = config.getString("builds." + id + ".name", "Sconosciuta");
 
-            Material iconMat = Material.PAPER;
-            byte iconData = 0;
+            ItemStack item = new ItemStack(Material.PAPER);
             List<String> hotbar = config.getStringList("builds." + id + ".hotbar");
             if (hotbar != null && !hotbar.isEmpty()) {
-                for(String h : hotbar) {
-                    if(!h.startsWith("AIR")) {
+                for (String h : hotbar) {
+                    if (!h.startsWith("AIR")) {
                         String[] p = h.split(";");
-                        iconMat = Material.valueOf(p[0]);
-                        iconData = Byte.parseByte(p[1]);
+                        if (p[0].startsWith("MOB_")) {
+                            item = plugin.getMobManager().getMobEgg(p[0].substring(4));
+                        } else {
+                            try {
+                                item = new ItemStack(Material.valueOf(p[0]), 1, Byte.parseByte(p[1]));
+                            } catch (Exception ignored) {}
+                        }
                         break;
                     }
                 }
             }
 
-            ItemStack item = new ItemStack(iconMat, 1, iconData);
             org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
             meta.setDisplayName("§a" + name);
             meta.setLore(java.util.Arrays.asList("§7ID: " + id, "", "§eClicca per giocare!"));
