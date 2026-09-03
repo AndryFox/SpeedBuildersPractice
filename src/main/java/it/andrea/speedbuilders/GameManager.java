@@ -88,7 +88,12 @@ public class GameManager {
     }
 
     public void saveCustomFloor(Player player) {
-        World w = player.getWorld();
+        World w = Bukkit.getWorld("practice"); // Ora punta fisso all'arena!
+        if (w == null) {
+            player.sendMessage("§cErrore: Mondo practice non trovato!");
+            return;
+        }
+
         java.util.List<String> floorBlocks = new java.util.ArrayList<>();
 
         // Salva i blocchi al livello Y=100 (Pavimento)
@@ -200,8 +205,8 @@ public class GameManager {
         List<String> blocksData = config.getStringList("builds." + buildId + ".blocks");
 
         if (customFloor) {
-            // Modalità Custom Floor: Applica il pavimento salvato dal giocatore tramite l'Editor
             if (plugin.getConfig().contains("players." + player.getUniqueId() + ".custom_floor_data")) {
+                // Il giocatore ha disegnato il suo pavimento: LO RISPETTIAMO AL 100% (nessuna proiezione che lo rovini)
                 List<String> customData = plugin.getConfig().getStringList("players." + player.getUniqueId() + ".custom_floor_data");
                 for (String data : customData) {
                     String[] parts = data.split(";");
@@ -211,10 +216,21 @@ public class GameManager {
                     }
                 }
             } else {
-                // Fallback: se ha scelto "Custom Floor" ma non lo ha ancora creato, usa l'erba
+                // Se non ha disegnato nulla, mettiamo l'erba e proiettiamo la base della build
                 for (int x = -3; x <= 3; x++) {
                     for (int z = -3; z <= 3; z++) {
                         world.getBlockAt(x, 100, z).setType(Material.GRASS);
+                    }
+                }
+                int targetY = category.equals("Mineplex") ? 2 : 1;
+                for (String dataString : blocksData) {
+                    String[] parts = dataString.split(";");
+                    if (parts.length == 5 && Integer.parseInt(parts[1]) == targetY) {
+                        Material m = Material.valueOf(parts[3]);
+                        if (m.isSolid() && !m.name().contains("FENCE") && !m.name().contains("DOOR") && !m.name().contains("STEP") && !m.name().contains("SKULL")) {
+                            world.getBlockAt(Integer.parseInt(parts[0]), 100, Integer.parseInt(parts[2]))
+                                    .setTypeIdAndData(m.getId(), Byte.parseByte(parts[4]), false);
+                        }
                     }
                 }
             }
@@ -225,16 +241,28 @@ public class GameManager {
                     Block floorBlock = world.getBlockAt(x, 100, z);
 
                     if (category.equals("FearGames")) {
-                        floorBlock.setType(Material.STAINED_GLASS);
-                        floorBlock.setData((byte) 15);
+                        boolean found = false;
+                        // Cerca se la build ha un pavimento specifico salvato a y=0
+                        for (String dataString : blocksData) {
+                            String[] parts = dataString.split(";");
+                            if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 0 && Integer.parseInt(parts[2]) == z) {
+                                floorBlock.setType(Material.valueOf(parts[3]));
+                                floorBlock.setData(Byte.parseByte(parts[4]));
+                                found = true;
+                                break;
+                            }
+                        }
+                        // Se non è personalizzato, usa il vetro nero classico
+                        if (!found) {
+                            floorBlock.setType(Material.STAINED_GLASS);
+                            floorBlock.setData((byte) 15);
+                        }
                     } else if (category.equals("Mineplex")) {
                         boolean found = false;
                         for (String dataString : blocksData) {
                             String[] parts = dataString.split(";");
-                            // Mineplex salva i blocchi del pavimento a Y=1
                             if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 1 && Integer.parseInt(parts[2]) == z) {
                                 Material m = Material.valueOf(parts[3]);
-                                // Trasforma fence, porte, slab e teschi in semplice terra
                                 if (!m.isSolid() || m.name().contains("FENCE") || m.name().contains("DOOR") || m.name().contains("SKULL") || m.name().contains("STEP")) {
                                     floorBlock.setType(Material.DIRT);
                                 } else {
@@ -262,7 +290,7 @@ public class GameManager {
 
         List<String> blocksData = new ArrayList<>();
         for (int x = -3; x <= 3; x++) {
-            for (int y = 1; y <= 32; y++) {
+            for (int y = 0; y <= 32; y++) {
                 for (int z = -3; z <= 3; z++) {
                     Block block = world.getBlockAt(x, 100 + y, z);
                     if (block.getType() != Material.AIR) {
@@ -334,6 +362,8 @@ public class GameManager {
                         if (y == 1) continue;
                         y = y - 1;
                     }
+
+                    if (category.equals("FearGames") && y == 0) continue;
 
                     if (parts[3].startsWith("MOB_")) {
                         org.bukkit.entity.EntityType type = plugin.getMobManager().getEntityType(parts[3].substring(4));
@@ -775,6 +805,7 @@ public class GameManager {
             String[] parts = dataString.split(";");
             if (parts.length == 5) {
                 if (cat.equals("Mineplex") && Integer.parseInt(parts[1]) == 1) continue;
+                if (cat.equals("FearGames") && Integer.parseInt(parts[1]) == 0) continue;
                 expectedBlocks++;
             }
         }
@@ -790,6 +821,8 @@ public class GameManager {
                         if (savedY == 1) continue;
                         savedY = savedY - 1;
                     }
+                    if (cat.equals("FearGames") && savedY == 0) continue;
+
 
                     String savedMatStr = parts[3];
 
@@ -860,6 +893,7 @@ public class GameManager {
                     if (savedY == 1) continue;
                     savedY = savedY - 1;
                 }
+                if (cat.equals("FearGames") && savedY == 0) continue;
 
                 String rawMat = parts[3];
                 if (rawMat.startsWith("MOB_")) {
