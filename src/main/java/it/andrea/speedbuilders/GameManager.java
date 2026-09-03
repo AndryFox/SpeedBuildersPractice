@@ -290,7 +290,6 @@ public class GameManager {
                             le.setAI(false);
                             le.setSilent(true);
                             le.setCollidable(false);
-                            le.setInvulnerable(true);
                             le.setRemoveWhenFarAway(false);
                         }
                         continue;
