@@ -9,10 +9,12 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockPhysicsEvent;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.block.BlockGrowEvent;
@@ -63,7 +65,7 @@ public class BlockFixes implements Listener {
                         event.setCancelled(true);
                         placeLoc.setType(Material.FLOWER_POT);
                         consumeItem(event.getPlayer(), item);
-                        triggerPerfectCheck(event.getPlayer()); // Controllo vittoria
+                        triggerPerfectCheck(event.getPlayer());
                     }
                     else if (item.getType() == Material.WOOD_DOOR || item.getType() == Material.IRON_DOOR || item.getType().name().contains("DOOR_ITEM")) {
                         Block topLoc = placeLoc.getRelative(BlockFace.UP);
@@ -82,7 +84,7 @@ public class BlockFixes implements Listener {
                             topLoc.setData((byte) 8);
 
                             consumeItem(event.getPlayer(), item);
-                            triggerPerfectCheck(event.getPlayer()); // Controllo vittoria
+                            triggerPerfectCheck(event.getPlayer());
                         }
                     }
                 }
@@ -99,7 +101,6 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // Lancia il controllo perfettivo in ritardo di un tick dopo aver forzato il blocco
     private void triggerPerfectCheck(org.bukkit.entity.Player player) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (plugin.getGameManager().checkBuildPerfect(player)) {
@@ -129,7 +130,6 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // Blocca la diffusione dell'erba (su terra) e dei funghi
     @EventHandler
     public void onBlockSpread(BlockSpreadEvent event) {
         if (event.getBlock().getWorld().getName().equals("practice")) {
@@ -137,7 +137,6 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // Blocca la crescita di colture, canne da zucchero, alberi, ecc.
     @EventHandler
     public void onBlockGrow(BlockGrowEvent event) {
         if (event.getBlock().getWorld().getName().equals("practice")) {
@@ -145,7 +144,6 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // Blocca il decadimento delle foglie e lo scioglimento di ghiaccio/neve
     @EventHandler
     public void onBlockFade(BlockFadeEvent event) {
         if (event.getBlock().getWorld().getName().equals("practice")) {
@@ -153,4 +151,44 @@ public class BlockFixes implements Listener {
         }
     }
 
+    // --- NUOVI FIX AGGIUNTI DA QUI IN POI ---
+
+    // Blocca definitivamente l'apertura delle interfacce per poter piazzare blocchi (shiftando) su incudini, hopper ecc.
+    @EventHandler
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        if (event.getPlayer().getWorld().getName().equals("practice") && !event.getPlayer().hasPermission("speedbuilders.admin")) {
+            org.bukkit.event.inventory.InventoryType type = event.getInventory().getType();
+            if (type == org.bukkit.event.inventory.InventoryType.ANVIL ||
+                    type == org.bukkit.event.inventory.InventoryType.HOPPER ||
+                    type == org.bukkit.event.inventory.InventoryType.CHEST ||
+                    type == org.bukkit.event.inventory.InventoryType.DISPENSER ||
+                    type == org.bukkit.event.inventory.InventoryType.DROPPER ||
+                    type == org.bukkit.event.inventory.InventoryType.FURNACE) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    // Gestisce i blocchi rotti in modo personalizzato: blocca il drop vanilla e usa il Normalizzatore
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        org.bukkit.entity.Player player = event.getPlayer();
+        if (player.getWorld().getName().equals("practice")) {
+            GameManager gm = plugin.getGameManager();
+            if (gm.getState(player).equals("PLAYING")) {
+                event.setDropItems(false); // Niente drop a terra (fix per i doppi fiori, ecc.)
+
+                Block b = event.getBlock();
+                Material type = b.getType();
+
+                // Restituisce l'oggetto perfetto per l'inventario tramite GameManager
+                ItemStack toGive = gm.normalizeItem(type, b.getData(), gm.getCurrentCategory(player));
+                if (toGive != null) {
+                    player.getInventory().addItem(toGive);
+                }
+
+                triggerPerfectCheck(player);
+            }
+        }
+    }
 }

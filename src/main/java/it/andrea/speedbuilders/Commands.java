@@ -76,8 +76,22 @@ public class Commands implements CommandExecutor {
             return true;
         }
 
-        if (cmdName.equals("practice") || cmdName.equals("p")) {
+        if (cmdName.equals("tpworld")) {
+            if (args.length == 0) {
+                player.sendMessage("§cUsa: /tpworld <nome>");
+                return true;
+            }
+            World targetWorld = Bukkit.getWorld(args[0]);
+            if (targetWorld != null) {
+                player.teleport(targetWorld.getSpawnLocation());
+                player.sendMessage("§aTeletrasportato nel mondo: " + targetWorld.getName());
+            } else {
+                player.sendMessage("§cIl mondo '" + args[0] + "' non è caricato sul server!");
+            }
+            return true;
+        }
 
+        if (cmdName.equals("practice") || cmdName.equals("p")) {
             if (args.length > 0) {
                 String sub = args[0].toLowerCase();
                 if (sub.equals("list")) {
@@ -127,10 +141,11 @@ public class Commands implements CommandExecutor {
                 player.sendMessage("§8§m--------------------------------");
                 player.sendMessage("§6§lGestione Mappe - SpeedBuilders");
                 player.sendMessage("§e/map setup §7- Genera l'arena base.");
-                player.sendMessage("§e/map create <nome> §7- Salva i blocchi che hai piazzato in una nuova build.");
-                player.sendMessage("§e/map load <id> <categoria> §7- Carica una build salvata nell'arena per testarla.");
-                player.sendMessage("§e/map list §7- Mostra l'ID e il nome di tutte le build salvate.");
-                player.sendMessage("§e/map delete <id> §7- Elimina una build dal database.");
+                player.sendMessage("§e/map create <nome> §7- Salva i blocchi che hai piazzato.");
+                player.sendMessage("§e/map load <id> <categoria> §7- Carica una build.");
+                player.sendMessage("§e/map list §7- Mostra tutte le build salvate.");
+                player.sendMessage("§e/map delete <id> §7- Elimina una build.");
+                player.sendMessage("§e/map setfloornpc §7- Genera l'NPC per lo stile pavimento.");
                 player.sendMessage("§8§m--------------------------------");
                 return true;
             }
@@ -239,6 +254,16 @@ public class Commands implements CommandExecutor {
                     plugin.saveConfig();
                     plugin.getHologramManager().spawnOrUpdate();
                     player.sendMessage("§aOlogramma della Top 10 posizionato in aria!");
+                    break;
+                case "setfloornpc":
+                    if (!player.isOp()) return true;
+                    org.bukkit.entity.Villager npcFloor = (org.bukkit.entity.Villager) player.getWorld().spawnEntity(player.getLocation(), org.bukkit.entity.EntityType.VILLAGER);
+                    npcFloor.setCustomName("§e§lBuild Floor");
+                    npcFloor.setCustomNameVisible(true);
+                    npcFloor.setAI(false);
+                    npcFloor.setInvulnerable(true);
+                    npcFloor.setCollidable(false);
+                    player.sendMessage("§aNPC stile pavimento creato alla tua posizione!");
                     break;
                 case "setexit":
                     if (!player.isOp()) return true;

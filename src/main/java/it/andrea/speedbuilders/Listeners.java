@@ -103,10 +103,7 @@ public class Listeners implements Listener {
                         }
 
                         String prefix = finalColor + "[" + finalTag + "] §f";
-
-                        if (prefix.length() > 16) {
-                            prefix = prefix.substring(0, 16);
-                        }
+                        if (prefix.length() > 16) { prefix = prefix.substring(0, 16); }
 
                         team.setPrefix(prefix);
                         team.addEntry(player.getName());
@@ -139,18 +136,43 @@ public class Listeners implements Listener {
     }
 
     @EventHandler
-    public void onNPCInteract(org.bukkit.event.player.PlayerInteractEntityEvent event) {
-        if (event.getRightClicked().getCustomName() != null && event.getRightClicked().getCustomName().equals("§c§lExit")) {
-            event.setCancelled(true);
-            event.getRightClicked().remove();
-            event.getPlayer().sendMessage("§aNPC di prova eliminato!");
+    public void onNPCInteract(PlayerInteractEntityEvent event) {
+        if (event.getRightClicked().getCustomName() != null) {
+            String npcName = event.getRightClicked().getCustomName();
+
+            if (npcName.equals("§c§lExit")) {
+                event.setCancelled(true);
+                event.getRightClicked().remove();
+                event.getPlayer().sendMessage("§aNPC di prova eliminato!");
+            }
+            else if (npcName.equals("§e§lBuild Floor") || npcName.equals("§e§lCustom Floor")) {
+                event.setCancelled(true);
+                Player player = event.getPlayer();
+
+                boolean currentState = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".custom_floor", false);
+                boolean newState = !currentState;
+                plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor", newState);
+                plugin.saveConfig();
+
+                event.getRightClicked().setCustomName(newState ? "§e§lCustom Floor" : "§e§lBuild Floor");
+                player.sendMessage("§aModalità pavimento aggiornata a: " + (newState ? "§eCustom Floor" : "§eBuild Floor"));
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, 2f);
+
+                int buildId = plugin.getGameManager().getCurrentBuild(player);
+                if (buildId != -1) {
+                    plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
+                }
+            }
         }
     }
 
     @EventHandler
-    public void onNPCDamage(org.bukkit.event.entity.EntityDamageEvent event) {
-        if (event.getEntity().getCustomName() != null && event.getEntity().getCustomName().equals("§c§lExit")) {
-            event.setCancelled(true);
+    public void onNPCDamage(EntityDamageEvent event) {
+        if (event.getEntity().getCustomName() != null) {
+            String name = event.getEntity().getCustomName();
+            if (name.equals("§c§lExit") || name.equals("§e§lBuild Floor") || name.equals("§e§lCustom Floor")) {
+                event.setCancelled(true);
+            }
         }
     }
 
@@ -162,18 +184,26 @@ public class Listeners implements Listener {
 
             if (clicked != null && clicked.getType() == Material.QUARTZ_BLOCK) {
                 int x = clicked.getX(), y = clicked.getY(), z = clicked.getZ();
+
+                // Controlla che il blocco si trovi nell'area globale dell'isola
                 if (y == 100 && x >= -4 && x <= 4 && z >= -4 && z <= 4) {
-                    if (player.getWorld().getName().equals("practice")) {
-                        event.setCancelled(true);
-                        GameManager gm = plugin.getGameManager();
-                        int buildId = gm.getCurrentBuild(player);
-                        if (buildId != -1) {
-                            gm.forceReset(player);
-                            // Recupera in modo dinamico la categoria in base all'ultima giocata
-                            gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
-                            gm.startCountdown(player, 3);
-                        } else {
-                            player.sendMessage("§cDevi prima caricare una build con /map load <id>!");
+
+                    // Controlla se il blocco si trova all'interno del 7x7 dove c'è il pavimento della build
+                    boolean isInnerPlot = (x >= -3 && x <= 3 && z >= -3 && z <= 3);
+
+                    // Fa partire il timer SOLO se il quarzo cliccato NON fa parte dell'area interna
+                    if (!isInnerPlot) {
+                        if (player.getWorld().getName().equals("practice")) {
+                            event.setCancelled(true);
+                            GameManager gm = plugin.getGameManager();
+                            int buildId = gm.getCurrentBuild(player);
+                            if (buildId != -1) {
+                                gm.forceReset(player);
+                                gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
+                                gm.startCountdown(player, 3);
+                            } else {
+                                player.sendMessage("§cDevi prima caricare una build con /map load <id>!");
+                            }
                         }
                     }
                 }
@@ -181,35 +211,9 @@ public class Listeners implements Listener {
         }
     }
 
-    @EventHandler
-    public void onBlockPlace(BlockPlaceEvent event) {
-        Player player = event.getPlayer();
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
-        GameManager gm = plugin.getGameManager();
-
-        if (gm.isLobbyWorld(player.getWorld())) { event.setCancelled(true); return; }
-
-        Block block = event.getBlock();
-        if (!block.getWorld().getName().equals("practice")) return;
-
-        if (!(block.getX() >= -3 && block.getX() <= 3 && block.getZ() >= -3 && block.getZ() <= 3 && block.getY() > 100)) {
-            event.setCancelled(true); player.sendMessage("§cPuoi costruire solo nel riquadro nero!"); return;
-        }
-
-        String state = gm.getState(player);
-        if (!state.equals("PLAYING")) {
-            event.setCancelled(true);
-            player.sendMessage(state.equals("COUNTDOWN") ? "§cAttendi la fine del countdown!" : "§cClicca sul pavimento nero per iniziare!");
-        }
-
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            if (gm.checkBuildPerfect(player)) gm.handlePerfect(player);
-        });
-    }
-
     @SuppressWarnings("deprecation")
     @EventHandler
-    public void onBlockBreak(org.bukkit.event.block.BlockBreakEvent event) {
+    public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
         GameManager gm = plugin.getGameManager();
@@ -232,8 +236,8 @@ public class Listeners implements Listener {
             event.setCancelled(true);
 
             byte data = block.getData();
-            Block top = (data >= 8) ? block : block.getRelative(org.bukkit.block.BlockFace.UP);
-            Block bottom = (data >= 8) ? block.getRelative(org.bukkit.block.BlockFace.DOWN) : block;
+            Block top = (data >= 8) ? block : block.getRelative(BlockFace.UP);
+            Block bottom = (data >= 8) ? block.getRelative(BlockFace.DOWN) : block;
 
             if (top.getType() == type) top.setType(Material.AIR);
             if (bottom.getType() == type) bottom.setType(Material.AIR);
@@ -270,10 +274,10 @@ public class Listeners implements Listener {
     }
 
     @EventHandler
-    public void onBlockDamage(org.bukkit.event.block.BlockDamageEvent event) {
-        org.bukkit.entity.Player player = event.getPlayer();
+    public void onBlockDamage(BlockDamageEvent event) {
+        Player player = event.getPlayer();
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
-        org.bukkit.block.Block block = event.getBlock();
+        Block block = event.getBlock();
         if (!block.getWorld().getName().equals("practice")) return;
 
         if (block.getX() >= -3 && block.getX() <= 3 && block.getZ() >= -3 && block.getZ() <= 3 && block.getY() > 100) {
@@ -327,6 +331,24 @@ public class Listeners implements Listener {
             else if (npcName.equalsIgnoreCase("/leave")) {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p leave");
+            }
+            else if (npcName.equalsIgnoreCase("Build Floor") || npcName.equalsIgnoreCase("Custom Floor") || npcName.equalsIgnoreCase("Stile Pavimento")) {
+                event.setCancelled(true);
+                Player player = event.getPlayer();
+
+                boolean currentState = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".custom_floor", false);
+                boolean newState = !currentState;
+                plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor", newState);
+                plugin.saveConfig();
+
+                // Feedback personale in chat (così ogni giocatore sa la PROPRIA impostazione)
+                player.sendMessage("§aModalità pavimento aggiornata a: " + (newState ? "§eCustom Floor" : "§eBuild Floor"));
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, 2f);
+
+                int buildId = plugin.getGameManager().getCurrentBuild(player);
+                if (buildId != -1) {
+                    plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
+                }
             }
         }
     }
@@ -418,7 +440,7 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onDoubleJump(PlayerToggleFlightEvent event) {
-        org.bukkit.entity.Player player = event.getPlayer();
+        Player player = event.getPlayer();
 
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
 
@@ -436,7 +458,7 @@ public class Listeners implements Listener {
         new BukkitRunnable() {
             @Override
             public void run() {
-                player.setVelocity(new org.bukkit.util.Vector(0, 1.00, 0));
+                player.setVelocity(new Vector(0, 1.00, 0));
                 player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1f, 1f);
             }
         }.runTask(plugin);
@@ -444,7 +466,7 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
-        org.bukkit.entity.Player player = event.getPlayer();
+        Player player = event.getPlayer();
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
 
         if (plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
@@ -453,5 +475,4 @@ public class Listeners implements Listener {
             }
         }
     }
-
 }

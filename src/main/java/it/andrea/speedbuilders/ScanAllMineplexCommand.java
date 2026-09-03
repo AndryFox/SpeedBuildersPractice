@@ -29,15 +29,14 @@ public class ScanAllMineplexCommand implements CommandExecutor {
     private static class ScannedBuild {
         String name;
         org.bukkit.World world;
-        int centerX, floorY, centerZ, spongeY;
+        int centerX, baseY, centerZ;
 
-        public ScannedBuild(String name, org.bukkit.World world, int centerX, int floorY, int centerZ, int spongeY) {
+        public ScannedBuild(String name, org.bukkit.World world, int centerX, int baseY, int centerZ) {
             this.name = name;
             this.world = world;
             this.centerX = centerX;
-            this.floorY = floorY;
+            this.baseY = baseY;
             this.centerZ = centerZ;
-            this.spongeY = spongeY;
         }
     }
 
@@ -46,43 +45,37 @@ public class ScanAllMineplexCommand implements CommandExecutor {
         if (!(sender instanceof Player)) return true;
         Player player = (Player) sender;
 
-        // Limiti estratti dai waypoint del Lunar Client (con un po' di margine)
         int minX = -475;
         int maxX = 110;
         int minZ = -10;
         int maxZ = 515;
 
-        player.sendMessage("§eAvvio scansione nel rettangolo: X(" + minX + " -> " + maxX + ") Z(" + minZ + " -> " + maxZ + ")...");
+        player.sendMessage("§eAvvio scansione ultrarapida nel rettangolo: X(" + minX + " -> " + maxX + ") Z(" + minZ + " -> " + maxZ + ")...");
         FileConfiguration config = plugin.getMineplexConfig();
 
         Set<String> existingNames = new HashSet<>();
         List<ScannedBuild> foundBuilds = new ArrayList<>();
-
         org.bukkit.World world = player.getWorld();
 
-        // 1. Scansiona il rettangolo esatto calcolato dai tuoi waypoint
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
-                for (int y = 9; y <= 11; y++) {
-                    Block sponge = world.getBlockAt(x, y, z);
-                    if (sponge.getType() == Material.SPONGE) {
-                        Sign sign = null;
-                        for (int i = 1; i <= 2; i++) {
-                            BlockState state = sponge.getRelative(0, i, 0).getState();
-                            if (state instanceof Sign) { sign = (Sign) state; break; }
-                        }
+                Block sponge = world.getBlockAt(x, 15, z);
 
-                        if (sign != null) {
-                            String buildName = (sign.getLine(0) + " " + sign.getLine(1) + " " + sign.getLine(2)).trim().replaceAll("§.", "");
-                            if (!buildName.isEmpty() && !existingNames.contains(buildName.toLowerCase())) {
-                                int floorY = sponge.getY() - 8;
+                if (sponge.getType() == Material.SPONGE) {
+                    BlockState state = sponge.getRelative(0, 1, 0).getState();
+                    if (state instanceof Sign) {
+                        Sign sign = (Sign) state;
+                        String buildName = (sign.getLine(0) + " " + sign.getLine(1) + " " + sign.getLine(2)).trim().replaceAll("§.", "");
 
-                                foundBuilds.add(new ScannedBuild(buildName, world, sponge.getX(), floorY, sponge.getZ(), sponge.getY()));
-                                existingNames.add(buildName.toLowerCase());
+                        if (!buildName.isEmpty() && !existingNames.contains(buildName.toLowerCase())) {
 
-                                if (foundBuilds.size() % 100 == 0) {
-                                    player.sendMessage("§aTrovate in memoria " + foundBuilds.size() + " build...");
-                                }
+                            int baseY = 4; // Pavimento custom
+
+                            foundBuilds.add(new ScannedBuild(buildName, world, sponge.getX(), baseY, sponge.getZ()));
+                            existingNames.add(buildName.toLowerCase());
+
+                            if (foundBuilds.size() % 100 == 0) {
+                                player.sendMessage("§aTrovate in memoria " + foundBuilds.size() + " build...");
                             }
                         }
                     }
@@ -90,43 +83,50 @@ public class ScanAllMineplexCommand implements CommandExecutor {
             }
         }
 
-        // 2. Ordina alfabeticamente
         player.sendMessage("§eOrdinamento alfabetico in corso...");
         foundBuilds.sort((b1, b2) -> b1.name.compareToIgnoreCase(b2.name));
 
         config.set("builds", null);
 
-        // 3. Salva sul file assegnando gli ID
         int currentId = 1;
         for (ScannedBuild b : foundBuilds) {
-            saveBuildToConfig(config, currentId, b.name, b.world, b.centerX, b.floorY, b.centerZ, b.spongeY);
+            saveBuildToConfig(config, currentId, b.name, b.world, b.centerX, b.baseY, b.centerZ);
             currentId++;
         }
 
         try {
             config.save(new File(plugin.getDataFolder(), "mineplex_builds.yml"));
-            player.sendMessage("§a§lSCANSIONE COMPLETATA! §eSalvate §l" + foundBuilds.size() + "§e build ordinate alfabeticamente.");
+            player.sendMessage("§a§lSCANSIONE COMPLETATA! §eSalvate §l" + foundBuilds.size() + "§e build alfabeticamente.");
         } catch (IOException e) { player.sendMessage("§cErrore durante il salvataggio del file!"); }
 
         return true;
     }
 
-    private void saveBuildToConfig(FileConfiguration config, int id, String name, org.bukkit.World world, int centerX, int floorY, int centerZ, int spongeY) {
+    private void saveBuildToConfig(FileConfiguration config, int id, String name, org.bukkit.World world, int centerX, int baseY, int centerZ) {
         String path = "builds." + id + ".";
         config.set(path + "name", name);
         List<String> blockList = new ArrayList<>();
         Set<String> uniqueMaterials = new LinkedHashSet<>();
 
-        for (int x = -3; x <= 3; x++) {
-            for (int y = floorY; y < spongeY; y++) {
+        // ORDINE INVERTITO: Prima la Y (dal basso verso l'alto)
+        for (int y = baseY; y < 15; y++) {
+            // Poi la X (da Ovest verso Est, ovvero da -3 a +3)
+            for (int x = -3; x <= 3; x++) {
+                // Infine la Z
                 for (int z = -3; z <= 3; z++) {
                     Block b = world.getBlockAt(centerX + x, y, centerZ + z);
+
                     if (b.getType() == Material.AIR || b.getType() == Material.SPONGE || b.getType() == Material.WALL_SIGN || b.getType() == Material.SIGN_POST) continue;
 
                     String mat = b.getType().name();
                     byte data = b.getData();
-                    blockList.add(x + ";" + (y - floorY + 1) + ";" + z + ";" + mat + ";" + data);
-                    if (uniqueMaterials.size() < 9) uniqueMaterials.add(mat + ";" + data);
+
+                    blockList.add(x + ";" + (y - baseY + 1) + ";" + z + ";" + mat + ";" + data);
+
+                    // Aggiunge alla hotbar SOLO se NON è il pavimento (y > baseY)
+                    if (y > baseY) {
+                        if (uniqueMaterials.size() < 9) uniqueMaterials.add(mat + ";" + data);
+                    }
                 }
             }
         }

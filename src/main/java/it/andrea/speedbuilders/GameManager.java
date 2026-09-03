@@ -159,6 +159,57 @@ public class GameManager {
     }
 
     @SuppressWarnings("deprecation")
+    public void generateFloor(Player player, int buildId, String category) {
+        World world = player.getWorld();
+        boolean customFloor = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".custom_floor", false);
+        FileConfiguration config = getBuildConfig(category);
+        List<String> blocksData = config.getStringList("builds." + buildId + ".blocks");
+
+        for (int x = -3; x <= 3; x++) {
+            for (int z = -3; z <= 3; z++) {
+                Block floorBlock = world.getBlockAt(x, 100, z);
+
+                if (customFloor) {
+                    // Custom Floor: Per Mineplex legge la base della build (Y=2), per Fear (Y=1)
+                    int targetY = category.equals("Mineplex") ? 2 : 1;
+                    boolean found = false;
+                    for (String dataString : blocksData) {
+                        String[] parts = dataString.split(";");
+                        if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == targetY && Integer.parseInt(parts[2]) == z) {
+                            floorBlock.setType(Material.valueOf(parts[3]));
+                            floorBlock.setData(Byte.parseByte(parts[4]));
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) floorBlock.setType(Material.GRASS);
+                } else {
+                    if (category.equals("FearGames")) {
+                        floorBlock.setType(Material.STAINED_GLASS);
+                        floorBlock.setData((byte) 15);
+                    } else if (category.equals("Mineplex")) {
+                        // Pavimento Normale: Legge il pavimento custom salvato al livello 1!
+                        boolean found = false;
+                        for (String dataString : blocksData) {
+                            String[] parts = dataString.split(";");
+                            if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 1 && Integer.parseInt(parts[2]) == z) {
+                                floorBlock.setType(Material.valueOf(parts[3]));
+                                floorBlock.setData(Byte.parseByte(parts[4]));
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            floorBlock.setType(Material.WOOD);
+                            floorBlock.setData((byte) 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
     public void saveBuild(Player player, int id, String buildName) {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
@@ -210,14 +261,25 @@ public class GameManager {
         }
 
         clearPlot(world);
+        generateFloor(player, id, category);
 
         List<String> blocksData = config.getStringList("builds." + id + ".blocks");
         for (String dataString : blocksData) {
             String[] parts = dataString.split(";");
             if (parts.length == 5) {
                 try {
-                    int x = Integer.parseInt(parts[0]); int y = Integer.parseInt(parts[1]); int z = Integer.parseInt(parts[2]);
-                    Material material = Material.valueOf(parts[3]); byte data = Byte.parseByte(parts[4]);
+                    int x = Integer.parseInt(parts[0]);
+                    int y = Integer.parseInt(parts[1]);
+                    int z = Integer.parseInt(parts[2]);
+                    Material material = Material.valueOf(parts[3]);
+                    byte data = Byte.parseByte(parts[4]);
+
+                    // Salta il pavimento (già messo da generateFloor) e abbassa la build di 1
+                    if (category.equals("Mineplex")) {
+                        if (y == 1) continue;
+                        y = y - 1;
+                    }
+
                     Block block = world.getBlockAt(x, 100 + y, z);
                     block.setType(material); block.setData(data);
                 } catch (Exception ignored) {}
@@ -279,7 +341,22 @@ public class GameManager {
     private void startTimer(Player player) {
         activeTimers.put(player, System.currentTimeMillis());
         int buildId = currentBuild.getOrDefault(player, -1);
-        final long finalBest = buildId != -1 ? plugin.getConfig().getLong("records." + player.getUniqueId().toString() + "." + buildId, 0) : 0;
+        String cat = getCurrentCategory(player);
+
+        String recordKey = cat + "_" + buildId;
+        String basePath = "records." + player.getUniqueId().toString() + ".";
+
+        // Recupero automatico dei vecchi record
+        if (buildId != -1 && cat.equals("FearGames")) {
+            if (!plugin.getConfig().contains(basePath + recordKey) && plugin.getConfig().contains(basePath + buildId)) {
+                long oldRecord = plugin.getConfig().getLong(basePath + buildId);
+                plugin.getConfig().set(basePath + recordKey, oldRecord);
+                plugin.getConfig().set(basePath + buildId, null); // Elimina il vecchio formato
+                plugin.saveConfig();
+            }
+        }
+
+        final long finalBest = buildId != -1 ? plugin.getConfig().getLong(basePath + recordKey, 0) : 0;
 
         BukkitTask task = new BukkitRunnable() {
             @Override
@@ -292,112 +369,6 @@ public class GameManager {
             }
         }.runTaskTimer(plugin, 0L, 1L);
         actionBars.put(player, task);
-    }
-
-    @SuppressWarnings("deprecation")
-    public void giveBuildItems(Player player, int buildId) {
-        player.getInventory().clear();
-        String cat = getCurrentCategory(player);
-        List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
-        HashMap<String, Integer> blockCounts = new HashMap<>();
-
-        for (String dataString : blocksData) {
-            String[] parts = dataString.split(";");
-            if (parts.length == 5) {
-                Material material = Material.valueOf(parts[3]);
-                byte data = Byte.parseByte(parts[4]);
-
-                if ((material.name().contains("DOOR") || material == Material.BED_BLOCK) && data >= 8) {
-                    continue;
-                }
-
-                material = getInventoryItemMaterial(material);
-
-                if (material == Material.LOG || material == Material.LOG_2) {
-                    data = (byte) (data % 4);
-                } else if (material.name().contains("STEP") || material.name().contains("SLAB")) {
-                    data = (byte) (data % 8);
-                } else if (material.name().contains("DOOR") || material == Material.BED) {
-                    data = 0;
-                }
-
-                String matData = material.name() + ";" + data;
-                blockCounts.put(matData, blockCounts.getOrDefault(matData, 0) + 1);
-            }
-        }
-
-        List<String> hotbar = getBuildConfig(cat).getStringList("builds." + buildId + ".hotbar");
-        if (hotbar != null && !hotbar.isEmpty()) {
-            for (int i = 0; i < hotbar.size() && i < 9; i++) {
-                String[] matData = hotbar.get(i).split(";");
-                if (!matData[0].equals("AIR")) {
-                    String key = matData[0] + ";" + matData[1];
-
-                    if (blockCounts.containsKey(key)) {
-                        Material material = Material.valueOf(matData[0]);
-                        byte data = Byte.parseByte(matData[1]);
-
-                        int totalNeeded = blockCounts.get(key);
-                        int toPutInSlot = Math.min(totalNeeded, 64);
-                        int leftOver = totalNeeded - toPutInSlot;
-
-                        player.getInventory().setItem(i, new ItemStack(material, toPutInSlot, data));
-
-                        if (leftOver > 0) {
-                            blockCounts.put(key, leftOver);
-                        } else {
-                            blockCounts.remove(key);
-                        }
-                    }
-                }
-            }
-        }
-
-        for (Map.Entry<String, Integer> entry : blockCounts.entrySet()) {
-            String[] matData = entry.getKey().split(";");
-            Material material = Material.valueOf(matData[0]);
-            byte data = Byte.parseByte(matData[1]);
-
-            player.getInventory().addItem(new ItemStack(material, entry.getValue(), data));
-        }
-    }
-
-    @SuppressWarnings("deprecation")
-    public boolean checkBuildPerfect(Player player) {
-        int buildId = currentBuild.getOrDefault(player, -1);
-        if (buildId == -1) return false;
-
-        String cat = getCurrentCategory(player);
-        List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
-        World world = player.getWorld();
-
-        int blocksInArena = 0;
-        for (int x = -3; x <= 3; x++) {
-            for (int y = 1; y <= 32; y++) {
-                for (int z = -3; z <= 3; z++) {
-                    if (world.getBlockAt(x, 100 + y, z).getType() != Material.AIR) blocksInArena++;
-                }
-            }
-        }
-        if (blocksInArena != blocksData.size()) return false;
-
-        for (String dataString : blocksData) {
-            String[] parts = dataString.split(";");
-            if (parts.length == 5) {
-                try {
-                    Block block = world.getBlockAt(Integer.parseInt(parts[0]), 100 + Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
-                    Material savedMat = Material.valueOf(parts[3]);
-                    byte savedData = Byte.parseByte(parts[4]);
-
-                    boolean ignoreData = (savedMat == Material.PUMPKIN || savedMat == Material.JACK_O_LANTERN);
-
-                    if (block.getType() != savedMat || (!ignoreData && block.getData() != savedData)) {
-                        return false;
-                    }
-                } catch (Exception e) { return false; }
-            }
-        }
-        return true;
     }
 
     public void handlePerfect(Player player) {
@@ -415,8 +386,12 @@ public class GameManager {
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
 
         int buildId = currentBuild.getOrDefault(player, -1);
+        String cat = getCurrentCategory(player); // Prende la categoria attuale
+
         if (buildId != -1) {
-            String recordPath = "records." + player.getUniqueId().toString() + "." + buildId;
+            // Salva il record usando Categoria_ID (es. FearGames_1)
+            String recordKey = cat + "_" + buildId;
+            String recordPath = "records." + player.getUniqueId().toString() + "." + recordKey;
             long currentRecord = plugin.getConfig().getLong(recordPath, 0);
 
             if (currentRecord == 0 || elapsed < currentRecord) {
@@ -543,6 +518,243 @@ public class GameManager {
         player.openInventory(inv);
     }
 
+    public void viewBuild(Player player) {
+        int buildId = getCurrentBuild(player);
+        if (buildId == -1) { player.sendMessage("§cDevi prima caricare una build con /map load <id>!"); return; }
+        forceReset(player);
+        loadBuild(player, buildId, getCurrentCategory(player));
+        setState(player, "IDLE");
+        player.sendMessage("§aBuild in modalità esplorazione. Clicca il quarzo per far partire il timer!");
+    }
+
+    // Normalizza l'oggetto da dare al giocatore o da mostrare nella GUI
+    public ItemStack normalizeItem(Material mat, byte data, String category) {
+        int amount = 1;
+
+        switch (mat) {
+            case QUARTZ_BLOCK:
+            case LOG:
+            case LOG_2:
+                data = (byte) (data % 4);
+                break;
+            case LEAVES:
+            case LEAVES_2:
+                data = (byte) (data % 4);
+                break;
+            case CHEST:
+            case TRAPPED_CHEST:
+            case ENDER_CHEST:
+            case FURNACE:
+            case DISPENSER:
+            case DROPPER:
+            case HOPPER:
+            case ENDER_PORTAL_FRAME:
+            case PUMPKIN:
+            case JACK_O_LANTERN:
+            case LADDER:
+            case WOOD_BUTTON:
+            case STONE_BUTTON:
+            case RAILS:
+            case ACTIVATOR_RAIL:
+            case DETECTOR_RAIL:
+            case POWERED_RAIL:
+            case WOOD_STAIRS:
+            case COBBLESTONE_STAIRS:
+            case BRICK_STAIRS:
+            case SMOOTH_STAIRS:
+            case NETHER_BRICK_STAIRS:
+            case SANDSTONE_STAIRS:
+            case SPRUCE_WOOD_STAIRS:
+            case BIRCH_WOOD_STAIRS:
+            case JUNGLE_WOOD_STAIRS:
+            case QUARTZ_STAIRS:
+            case ACACIA_STAIRS:
+            case DARK_OAK_STAIRS:
+            case PURPUR_STAIRS:
+                data = 0;
+                break;
+            case STEP:
+            case WOOD_STEP:
+            case STONE_SLAB2:
+            case PURPUR_SLAB:
+                data = (byte) (data % 8);
+                break;
+            case DOUBLE_STEP:
+                mat = Material.STEP;
+                data = (byte) (data % 8);
+                amount = 2;
+                break;
+            case WOOD_DOUBLE_STEP:
+                mat = Material.WOOD_STEP;
+                data = (byte) (data % 8);
+                amount = 2;
+                break;
+            case DOUBLE_STONE_SLAB2:
+                mat = Material.STONE_SLAB2;
+                data = 0;
+                amount = 2;
+                break;
+            case DOUBLE_PLANT:
+                if (data >= 8) return null;
+                break;
+            case SKULL: mat = Material.SKULL_ITEM; data = 0; break;
+            case STANDING_BANNER:
+            case WALL_BANNER: mat = Material.BANNER; data = 0; break;
+            case CAKE_BLOCK: mat = Material.CAKE; data = 0; break;
+            case CAULDRON: mat = Material.CAULDRON_ITEM; data = 0; break;
+            case REDSTONE_WIRE: mat = Material.REDSTONE; data = 0; break;
+            case GLOWING_REDSTONE_ORE: mat = Material.REDSTONE_ORE; data = 0; break;
+            case DIODE_BLOCK_OFF:
+            case DIODE_BLOCK_ON: mat = Material.DIODE; data = 0; break;
+            case REDSTONE_COMPARATOR_OFF:
+            case REDSTONE_COMPARATOR_ON: mat = Material.REDSTONE_COMPARATOR; data = 0; break;
+            case DAYLIGHT_DETECTOR_INVERTED: mat = Material.DAYLIGHT_DETECTOR; data = 0; break;
+            case SUGAR_CANE_BLOCK: mat = Material.SUGAR_CANE; data = 0; break;
+            case BED_BLOCK: mat = Material.BED; data = 0; break;
+            case FLOWER_POT: mat = Material.FLOWER_POT_ITEM; data = 0; break;
+            case BREWING_STAND: mat = Material.BREWING_STAND_ITEM; data = 0; break;
+            case SIGN_POST:
+            case WALL_SIGN: mat = Material.SIGN; data = 0; break;
+            case WOODEN_DOOR: mat = Material.WOOD_DOOR; data = 0; break;
+            case IRON_DOOR_BLOCK: mat = Material.IRON_DOOR; data = 0; break;
+            case SPRUCE_DOOR: mat = Material.SPRUCE_DOOR_ITEM; data = 0; break;
+            case BIRCH_DOOR: mat = Material.BIRCH_DOOR_ITEM; data = 0; break;
+            case JUNGLE_DOOR: mat = Material.JUNGLE_DOOR_ITEM; data = 0; break;
+            case ACACIA_DOOR: mat = Material.ACACIA_DOOR_ITEM; data = 0; break;
+            case DARK_OAK_DOOR: mat = Material.DARK_OAK_DOOR_ITEM; data = 0; break;
+            default: break;
+        }
+
+        return new ItemStack(mat, amount, data);
+    }
+
+    @SuppressWarnings("deprecation")
+    public void giveBuildItems(Player player, int buildId) {
+        player.getInventory().clear();
+        String cat = getCurrentCategory(player);
+        List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
+        HashMap<String, Integer> blockCounts = new HashMap<>();
+
+        for (String dataString : blocksData) {
+            String[] parts = dataString.split(";");
+            if (parts.length == 5) {
+                if (cat.equals("Mineplex") && Integer.parseInt(parts[1]) == 1) continue;
+
+                Material material = Material.valueOf(parts[3]);
+                byte data = Byte.parseByte(parts[4]);
+
+                if ((material.name().contains("DOOR") || material == Material.BED_BLOCK || material == Material.DOUBLE_PLANT) && data >= 8) continue;
+
+                ItemStack normalized = normalizeItem(material, data, cat);
+                if (normalized != null) {
+                    String matData = normalized.getType().name() + ";" + normalized.getDurability();
+                    blockCounts.put(matData, blockCounts.getOrDefault(matData, 0) + normalized.getAmount());
+                }
+            }
+        }
+
+        List<String> hotbar = getBuildConfig(cat).getStringList("builds." + buildId + ".hotbar");
+        int slotIndex = 0;
+
+        if (hotbar != null && !hotbar.isEmpty()) {
+            for (String h : hotbar) {
+                if (!h.equals("AIR;0")) {
+                    String[] matDataRaw = h.split(";");
+                    Material rawMat = Material.valueOf(matDataRaw[0]);
+                    byte rawData = Byte.parseByte(matDataRaw[1]);
+
+                    ItemStack normalized = normalizeItem(rawMat, rawData, cat);
+                    if (normalized != null) {
+                        String key = normalized.getType().name() + ";" + normalized.getDurability();
+
+                        if (blockCounts.containsKey(key)) {
+                            int totalNeeded = blockCounts.get(key);
+                            int toPutInSlot = Math.min(totalNeeded, 64);
+                            int leftOver = totalNeeded - toPutInSlot;
+
+                            player.getInventory().setItem(slotIndex, new ItemStack(normalized.getType(), toPutInSlot, normalized.getDurability()));
+                            slotIndex++;
+
+                            if (leftOver > 0) blockCounts.put(key, leftOver);
+                            else blockCounts.remove(key);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (Map.Entry<String, Integer> entry : blockCounts.entrySet()) {
+            String[] matData = entry.getKey().split(";");
+            player.getInventory().addItem(new ItemStack(Material.valueOf(matData[0]), entry.getValue(), Short.parseShort(matData[1])));
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    public boolean checkBuildPerfect(Player player) {
+        int buildId = currentBuild.getOrDefault(player, -1);
+        if (buildId == -1) return false;
+
+        String cat = getCurrentCategory(player);
+        List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
+        World world = player.getWorld();
+
+        int blocksInArena = 0;
+        for (int x = -3; x <= 3; x++) {
+            for (int y = 1; y <= 32; y++) {
+                for (int z = -3; z <= 3; z++) {
+                    if (world.getBlockAt(x, 100 + y, z).getType() != Material.AIR) blocksInArena++;
+                }
+            }
+        }
+
+        int expectedBlocks = 0;
+        for (String dataString : blocksData) {
+            String[] parts = dataString.split(";");
+            if (parts.length == 5) {
+                if (cat.equals("Mineplex") && Integer.parseInt(parts[1]) == 1) continue;
+                expectedBlocks++;
+            }
+        }
+
+        if (blocksInArena != expectedBlocks) return false;
+
+        for (String dataString : blocksData) {
+            String[] parts = dataString.split(";");
+            if (parts.length == 5) {
+                try {
+                    int savedY = Integer.parseInt(parts[1]);
+                    if (cat.equals("Mineplex")) {
+                        if (savedY == 1) continue;
+                        savedY = savedY - 1;
+                    }
+
+                    Block block = world.getBlockAt(Integer.parseInt(parts[0]), 100 + savedY, Integer.parseInt(parts[2]));
+                    Material savedMat = Material.valueOf(parts[3]);
+                    byte savedData = Byte.parseByte(parts[4]);
+                    Material blockMat = block.getType();
+
+                    if (savedMat == Material.GLOWING_REDSTONE_ORE && blockMat == Material.REDSTONE_ORE) savedMat = Material.REDSTONE_ORE;
+                    if (savedMat == Material.REDSTONE_ORE && blockMat == Material.GLOWING_REDSTONE_ORE) blockMat = Material.REDSTONE_ORE;
+                    if (savedMat == Material.DAYLIGHT_DETECTOR_INVERTED && blockMat == Material.DAYLIGHT_DETECTOR) savedMat = Material.DAYLIGHT_DETECTOR;
+                    if (savedMat == Material.DAYLIGHT_DETECTOR && blockMat == Material.DAYLIGHT_DETECTOR_INVERTED) blockMat = Material.DAYLIGHT_DETECTOR;
+
+                    if (blockMat != savedMat) return false;
+
+                    boolean ignoreData = false;
+                    if (savedMat == Material.SKULL || savedMat == Material.SKULL_ITEM) ignoreData = true;
+                    if (savedMat.name().contains("PLATE")) ignoreData = true;
+                    if (savedMat == Material.DAYLIGHT_DETECTOR) ignoreData = true;
+                    if (cat.equals("FearGames") && (savedMat == Material.PUMPKIN || savedMat == Material.JACK_O_LANTERN)) ignoreData = true;
+
+                    if (!ignoreData && block.getData() != savedData) {
+                        return false;
+                    }
+                } catch (Exception e) { return false; }
+            }
+        }
+        return true;
+    }
+
     @SuppressWarnings("deprecation")
     public void showErrors(Player player) {
         int buildId = getCurrentBuild(player);
@@ -557,7 +769,17 @@ public class GameManager {
         for (String dataString : blocksData) {
             String[] parts = dataString.split(";");
             if (parts.length == 5) {
-                expected.put(parts[0] + ";" + parts[1] + ";" + parts[2], parts[3] + ";" + parts[4]);
+                int savedY = Integer.parseInt(parts[1]);
+                if (cat.equals("Mineplex")) {
+                    if (savedY == 1) continue;
+                    savedY = savedY - 1;
+                }
+
+                Material savedMat = Material.valueOf(parts[3]);
+                if (savedMat == Material.GLOWING_REDSTONE_ORE) savedMat = Material.REDSTONE_ORE;
+                if (savedMat == Material.DAYLIGHT_DETECTOR_INVERTED) savedMat = Material.DAYLIGHT_DETECTOR;
+
+                expected.put(parts[0] + ";" + savedY + ";" + parts[2], savedMat.name() + ";" + parts[4]);
             }
         }
 
@@ -578,9 +800,18 @@ public class GameManager {
                             String[] p = exp.split(";");
                             Material eMat = Material.valueOf(p[0]);
                             byte eData = Byte.parseByte(p[1]);
-                            boolean ignoreData = (eMat == Material.PUMPKIN || eMat == Material.JACK_O_LANTERN);
+                            Material blockMat = b.getType();
 
-                            if (b.getType() != eMat || (!ignoreData && b.getData() != eData)) {
+                            if (blockMat == Material.GLOWING_REDSTONE_ORE) blockMat = Material.REDSTONE_ORE;
+                            if (blockMat == Material.DAYLIGHT_DETECTOR_INVERTED) blockMat = Material.DAYLIGHT_DETECTOR;
+
+                            boolean ignoreData = false;
+                            if (eMat == Material.SKULL || eMat == Material.SKULL_ITEM) ignoreData = true;
+                            if (eMat.name().contains("PLATE")) ignoreData = true;
+                            if (eMat == Material.DAYLIGHT_DETECTOR) ignoreData = true;
+                            if (cat.equals("FearGames") && (eMat == Material.PUMPKIN || eMat == Material.JACK_O_LANTERN)) ignoreData = true;
+
+                            if (blockMat != eMat || (!ignoreData && b.getData() != eData)) {
                                 player.sendBlockChange(b.getLocation(), Material.STAINED_GLASS, (byte) 14);
                                 errorsCount++;
                             }
@@ -626,15 +857,6 @@ public class GameManager {
                 }
             }.runTaskLater(plugin, 100L);
         }
-    }
-
-    public void viewBuild(Player player) {
-        int buildId = getCurrentBuild(player);
-        if (buildId == -1) { player.sendMessage("§cDevi prima caricare una build con /map load <id>!"); return; }
-        forceReset(player);
-        loadBuild(player, buildId, getCurrentCategory(player));
-        setState(player, "IDLE");
-        player.sendMessage("§aBuild in modalità esplorazione. Clicca il quarzo per far partire il timer!");
     }
 
 }
