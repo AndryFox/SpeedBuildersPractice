@@ -211,9 +211,8 @@ public class Listeners implements Listener {
         }
     }
 
-    @SuppressWarnings("deprecation")
     @EventHandler
-    public void onBlockBreak(BlockBreakEvent event) {
+    public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
         GameManager gm = plugin.getGameManager();
@@ -223,49 +222,18 @@ public class Listeners implements Listener {
         Block block = event.getBlock();
         if (!block.getWorld().getName().equals("practice")) return;
 
+        // Il muro invisibile per i blocchi normali
         if (!(block.getX() >= -3 && block.getX() <= 3 && block.getZ() >= -3 && block.getZ() <= 3 && block.getY() > 100)) {
-            event.setCancelled(true); player.sendMessage("§cNon puoi distruggere l'arena!"); return;
-        }
-
-        if (!gm.getState(player).equals("PLAYING")) { event.setCancelled(true); return; }
-
-        event.setDropItems(false);
-
-        Material type = block.getType();
-        if (type.name().contains("DOOR") && !type.name().contains("TRAP")) {
             event.setCancelled(true);
-
-            byte data = block.getData();
-            Block top = (data >= 8) ? block : block.getRelative(BlockFace.UP);
-            Block bottom = (data >= 8) ? block.getRelative(BlockFace.DOWN) : block;
-
-            if (top.getType() == type) top.setType(Material.AIR);
-            if (bottom.getType() == type) bottom.setType(Material.AIR);
-
-            Material dropMat = gm.getInventoryItemMaterial(type);
-            player.getInventory().addItem(new ItemStack(dropMat, 1, (short)0));
-
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (gm.checkBuildPerfect(player)) gm.handlePerfect(player);
-            });
+            player.sendMessage("§cPuoi costruire solo nel riquadro nero!");
             return;
         }
 
-        Material dropMat = gm.getInventoryItemMaterial(block.getType());
-        byte dropData = block.getData();
-        boolean shouldDrop = true;
-
-        if (dropMat == Material.LOG || dropMat == Material.LOG_2) {
-            dropData = (byte) (dropData % 4);
-        } else if (dropMat.name().contains("STEP") || dropMat.name().contains("SLAB")) {
-            dropData = (byte) (dropData % 8);
-        } else if (dropMat == Material.BED) {
-            dropData = 0;
-            if (block.getData() >= 8) shouldDrop = false;
-        }
-
-        if (shouldDrop) {
-            player.getInventory().addItem(new ItemStack(dropMat, 1, dropData));
+        String state = gm.getState(player);
+        if (!state.equals("PLAYING")) {
+            event.setCancelled(true);
+            player.sendMessage(state.equals("COUNTDOWN") ? "§cAttendi la fine del countdown!" : "§cClicca sul pavimento nero per iniziare!");
+            return;
         }
 
         Bukkit.getScheduler().runTask(plugin, () -> {
