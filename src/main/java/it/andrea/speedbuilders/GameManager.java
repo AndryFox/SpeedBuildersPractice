@@ -277,7 +277,23 @@ public class GameManager {
                         y = y - 1;
                     }
 
-                    if (parts[3].startsWith("MOB_")) continue; // <--- Aggiunto (i mob li piazza il giocatore!)
+                    // Se è un mob, lo spawna come statuina per l'anteprima!
+                    if (parts[3].startsWith("MOB_")) {
+                        org.bukkit.entity.EntityType type = plugin.getMobManager().getEntityType(parts[3].substring(4));
+                        Location loc = new Location(world, x + 0.5, 100 + y, z + 0.5, 180f, 0f);
+                        org.bukkit.entity.Entity ent = world.spawnEntity(loc, type);
+
+                        ent.setMetadata("SpeedBuildersMob", new org.bukkit.metadata.FixedMetadataValue(plugin, true));
+
+                        if (ent instanceof org.bukkit.entity.LivingEntity) {
+                            org.bukkit.entity.LivingEntity le = (org.bukkit.entity.LivingEntity) ent;
+                            le.setAI(false);
+                            le.setSilent(true);
+                            le.setCollidable(false);
+                            le.setInvulnerable(true);
+                        }
+                        continue;
+                    }
 
                     Material material = Material.valueOf(parts[3]);
                     byte data = Byte.parseByte(parts[4]);
