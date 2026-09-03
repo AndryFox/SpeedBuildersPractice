@@ -61,6 +61,12 @@ public class MobManager implements Listener {
                 org.bukkit.block.Block clicked = event.getClickedBlock();
                 org.bukkit.block.Block target = clicked.getRelative(event.getBlockFace());
 
+                // --- CONTROLLO CONFINI AGGIUNTO ---
+                if (!(target.getX() >= -3 && target.getX() <= 3 && target.getZ() >= -3 && target.getZ() <= 3 && target.getY() > 100)) {
+                    player.sendMessage("§cPuoi piazzare i mob solo nel riquadro nero!");
+                    return;
+                }
+
                 Location spawnLoc = target.getLocation().add(0.5, 0, 0.5);
                 spawnLoc.setYaw(player.getLocation().getYaw() + 180f); // Rivolto verso il giocatore
 

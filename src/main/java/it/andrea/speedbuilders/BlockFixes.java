@@ -57,34 +57,47 @@ public class BlockFixes implements Listener {
             }
 
             ItemStack item = event.getItem();
-            if (item != null && clicked.getType().name().contains("GLASS")) {
+            if (item != null) {
                 Block placeLoc = clicked.getRelative(event.getBlockFace());
 
-                if (placeLoc.getType() == Material.AIR) {
-                    if (item.getType() == Material.FLOWER_POT_ITEM) {
-                        event.setCancelled(true);
-                        placeLoc.setType(Material.FLOWER_POT);
-                        consumeItem(event.getPlayer(), item);
-                        triggerPerfectCheck(event.getPlayer());
-                    }
-                    else if (item.getType() == Material.WOOD_DOOR || item.getType() == Material.IRON_DOOR || item.getType().name().contains("DOOR_ITEM")) {
-                        Block topLoc = placeLoc.getRelative(BlockFace.UP);
-                        if (topLoc.getType() == Material.AIR) {
+                // Gestione universale per Porte e Vasi (rimosso il vecchio limite del VETRO)
+                if (item.getType() == Material.FLOWER_POT_ITEM || item.getType().name().contains("DOOR")) {
+
+                    // Controlla se stai cercando di piazzare fuori dal 7x7
+                    if (!(placeLoc.getX() >= -3 && placeLoc.getX() <= 3 && placeLoc.getZ() >= -3 && placeLoc.getZ() <= 3 && placeLoc.getY() > 100)) {
+                        // Blocca l'azione solo se sei in survival
+                        if (event.getPlayer().getGameMode() != GameMode.CREATIVE) {
                             event.setCancelled(true);
-                            Material doorMat = (item.getType() == Material.IRON_DOOR) ? Material.IRON_DOOR_BLOCK : Material.WOODEN_DOOR;
-                            if (item.getType().name().contains("SPRUCE")) doorMat = Material.SPRUCE_DOOR;
-                            if (item.getType().name().contains("BIRCH")) doorMat = Material.BIRCH_DOOR;
-                            if (item.getType().name().contains("JUNGLE")) doorMat = Material.JUNGLE_DOOR;
-                            if (item.getType().name().contains("ACACIA")) doorMat = Material.ACACIA_DOOR;
-                            if (item.getType().name().contains("DARK_OAK")) doorMat = Material.DARK_OAK_DOOR;
+                            event.getPlayer().sendMessage("§cPuoi costruire solo nel riquadro nero!");
+                        }
+                        return;
+                    }
 
-                            placeLoc.setType(doorMat);
-                            placeLoc.setData((byte) 0);
-                            topLoc.setType(doorMat);
-                            topLoc.setData((byte) 8);
-
+                    if (placeLoc.getType() == Material.AIR) {
+                        if (item.getType() == Material.FLOWER_POT_ITEM) {
+                            event.setCancelled(true);
+                            placeLoc.setType(Material.FLOWER_POT);
                             consumeItem(event.getPlayer(), item);
                             triggerPerfectCheck(event.getPlayer());
+                        } else {
+                            Block topLoc = placeLoc.getRelative(BlockFace.UP);
+                            if (topLoc.getType() == Material.AIR) {
+                                event.setCancelled(true);
+                                Material doorMat = (item.getType() == Material.IRON_DOOR) ? Material.IRON_DOOR_BLOCK : Material.WOODEN_DOOR;
+                                if (item.getType().name().contains("SPRUCE")) doorMat = Material.SPRUCE_DOOR;
+                                if (item.getType().name().contains("BIRCH")) doorMat = Material.BIRCH_DOOR;
+                                if (item.getType().name().contains("JUNGLE")) doorMat = Material.JUNGLE_DOOR;
+                                if (item.getType().name().contains("ACACIA")) doorMat = Material.ACACIA_DOOR;
+                                if (item.getType().name().contains("DARK_OAK")) doorMat = Material.DARK_OAK_DOOR;
+
+                                placeLoc.setType(doorMat);
+                                placeLoc.setData((byte) 0);
+                                topLoc.setType(doorMat);
+                                topLoc.setData((byte) 8);
+
+                                consumeItem(event.getPlayer(), item);
+                                triggerPerfectCheck(event.getPlayer());
+                            }
                         }
                     }
                 }
