@@ -75,6 +75,13 @@ public class Main extends JavaPlugin {
         if (practiceWorld != null) {
             practiceWorld.setDifficulty(org.bukkit.Difficulty.NORMAL);
             practiceWorld.setGameRuleValue("doMobSpawning", "false");
+
+            // ELIMINA TUTTE LE ENTITA' ESISTENTI (TRANNE I GIOCATORI E GLI NPC)
+            for (org.bukkit.entity.Entity ent : practiceWorld.getEntities()) {
+                if (!(ent instanceof org.bukkit.entity.Player) && !ent.hasMetadata("NPC")) {
+                    ent.remove();
+                }
+            }
         }
 
         this.hologramManager = new HologramManager(this);
