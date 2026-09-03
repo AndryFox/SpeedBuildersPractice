@@ -83,6 +83,7 @@ public class MobManager implements Listener {
                     le.setAI(false);
                     le.setSilent(true);
                     le.setCollidable(false);
+                    le.setRemoveWhenFarAway(false);
                 }
 
                 if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) {

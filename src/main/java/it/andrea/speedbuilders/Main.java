@@ -70,6 +70,13 @@ public class Main extends JavaPlugin {
             return;
         }
 
+        // Forza la difficoltà e le regole del mondo all'avvio
+        org.bukkit.World practiceWorld = getServer().getWorld("practice");
+        if (practiceWorld != null) {
+            practiceWorld.setDifficulty(org.bukkit.Difficulty.NORMAL);
+            practiceWorld.setGameRuleValue("doMobSpawning", "false");
+        }
+
         this.hologramManager = new HologramManager(this);
         this.gameManager = new GameManager(this);
         this.mobManager = new MobManager(this);
