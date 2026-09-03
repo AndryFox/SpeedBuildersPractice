@@ -301,9 +301,15 @@ public class Listeners implements Listener {
                 event.setCancelled(true);
                 impostaPavimento(event.getPlayer(), false);
             }
+            // NPC 2: Pavimento Custom (Seleziona lo stile)
+            else if (npcName.equalsIgnoreCase("Custom Floor") || npcName.equalsIgnoreCase("Pavimento Custom")) {
+                event.setCancelled(true);
+                impostaPavimento(event.getPlayer(), true);
+            }
+            // NPC 3: Custom Build (Editor in Creativa)
             else if (npcName.equalsIgnoreCase("Custom Build")) {
                 event.setCancelled(true);
-                Player player = event.getPlayer(); // <- Definizione aggiunta qui
+                Player player = event.getPlayer();
 
                 if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
                     plugin.getGameManager().saveCustomFloor(player);

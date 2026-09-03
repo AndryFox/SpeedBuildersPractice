@@ -374,6 +374,7 @@ public class GameManager {
 
         String name = config.getString("builds." + id + ".name", "Sconosciuta");
         player.sendMessage("§aBuild '" + name + "' (" + category + ") §e[ID: " + id + "]§a caricata! Clicca sul quarzo per iniziare.");
+        plugin.getHologramManager().updateArenaHologram(new Location(world, -5.5, 105.0, -5.5), id, category);
         currentBuild.put(player, id);
     }
 
