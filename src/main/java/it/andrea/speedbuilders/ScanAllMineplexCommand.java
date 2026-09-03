@@ -106,9 +106,10 @@ public class ScanAllMineplexCommand implements CommandExecutor {
         String path = "builds." + id + ".";
         config.set(path + "name", name);
         List<String> blockList = new ArrayList<>();
-        Set<String> uniqueMaterials = new LinkedHashSet<>();
 
-        // ORDINE INVERTITO: Prima la Y (dal basso verso l'alto)
+        List<String> uniqueBlocks = new ArrayList<>();
+        List<String> uniqueMobs = new ArrayList<>();
+
         for (int y = baseY; y < 15; y++) {
             for (int x = -3; x <= 3; x++) {
                 for (int z = -3; z <= 3; z++) {
@@ -119,7 +120,6 @@ public class ScanAllMineplexCommand implements CommandExecutor {
                     String mat = b.getType().name();
                     byte data = b.getData();
 
-                    // Se è un cartello, legge il testo e lo converte in MOB!
                     if (b.getType() == Material.WALL_SIGN || b.getType() == Material.SIGN_POST) {
                         Sign signState = (Sign) b.getState();
                         String text = (signState.getLine(0) + "_" + signState.getLine(1) + "_" + signState.getLine(2))
@@ -127,7 +127,7 @@ public class ScanAllMineplexCommand implements CommandExecutor {
 
                         if (text.startsWith("_")) text = text.substring(1);
                         if (text.endsWith("_")) text = text.substring(0, text.length() - 1);
-                        if (text.isEmpty()) text = "PIG"; // Sicurezza
+                        if (text.isEmpty()) text = "PIG";
 
                         mat = "MOB_" + text;
                         data = 0;
@@ -136,14 +136,25 @@ public class ScanAllMineplexCommand implements CommandExecutor {
                     blockList.add(x + ";" + (y - baseY + 1) + ";" + z + ";" + mat + ";" + data);
 
                     if (y > baseY) {
-                        if (uniqueMaterials.size() < 9) uniqueMaterials.add(mat + ";" + data);
+                        if (mat.startsWith("MOB_")) {
+                            if (!uniqueMobs.contains(mat + ";" + data)) uniqueMobs.add(mat + ";" + data);
+                        } else {
+                            String normMat = mat;
+                            if (mat.equals("DAYLIGHT_DETECTOR_INVERTED")) normMat = "DAYLIGHT_DETECTOR";
+                            if (mat.equals("GLOWING_REDSTONE_ORE")) normMat = "REDSTONE_ORE";
+                            String key = normMat + ";" + data;
+                            if (!uniqueBlocks.contains(key)) uniqueBlocks.add(key);
+                        }
                     }
                 }
             }
         }
 
-        List<String> hotbarList = new ArrayList<>(uniqueMaterials);
+        List<String> hotbarList = new ArrayList<>();
+        for(String b : uniqueBlocks) { if(hotbarList.size() < 9) hotbarList.add(b); }
+        for(String m : uniqueMobs) { if(hotbarList.size() < 9) hotbarList.add(m); }
         while (hotbarList.size() < 9) hotbarList.add("AIR;0");
+
         config.set(path + "blocks", blockList);
         config.set(path + "hotbar", hotbarList);
     }

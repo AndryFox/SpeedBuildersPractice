@@ -257,6 +257,14 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onEntityDamage(EntityDamageEvent event) {
+        // Se l'entità è un nostro Mob, lascia che se ne occupi il MobManager per i colpi dei giocatori
+        if (event.getEntity().hasMetadata("SpeedBuildersMob")) {
+            if (!(event instanceof org.bukkit.event.entity.EntityDamageByEntityEvent)) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+
         if (event.getEntity().getWorld().getName().equals("practice")) { event.setCancelled(true); return; }
         if (event.getEntity() instanceof Player && plugin.getGameManager().isLobbyWorld(event.getEntity().getWorld())) {
             event.setCancelled(true);

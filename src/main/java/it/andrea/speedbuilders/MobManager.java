@@ -8,12 +8,14 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SpawnEggMeta;
+import org.bukkit.metadata.FixedMetadataValue;
 
 public class MobManager implements Listener {
     private final Main plugin;
@@ -22,7 +24,6 @@ public class MobManager implements Listener {
         this.plugin = plugin;
     }
 
-    // Pulisce il nome del cartello e lo converte in EntityType
     public EntityType getEntityType(String name) {
         name = name.toUpperCase().replace(" ", "_");
         if (name.contains("SNOWMAN")) return EntityType.SNOWMAN;
@@ -32,11 +33,10 @@ public class MobManager implements Listener {
         try {
             return EntityType.valueOf(name);
         } catch (Exception e) {
-            return EntityType.PIG; // Fallback se il nome è scritto male
+            return EntityType.PIG;
         }
     }
 
-    // Genera l'uovo per l'inventario
     public ItemStack getMobEgg(String mobName) {
         ItemStack egg = new ItemStack(Material.MONSTER_EGG, 1);
         SpawnEggMeta meta = (SpawnEggMeta) egg.getItemMeta();
@@ -45,7 +45,6 @@ public class MobManager implements Listener {
         return egg;
     }
 
-    // Piazza il mob perfettamente centrato e senza IA
     @EventHandler
     public void onEggUse(PlayerInteractEvent event) {
         Player player = event.getPlayer();
@@ -53,7 +52,7 @@ public class MobManager implements Listener {
 
         ItemStack item = event.getItem();
         if (item != null && item.getType() == Material.MONSTER_EGG) {
-            event.setCancelled(true); // Annulla lo spawn vanilla sballato
+            event.setCancelled(true);
 
             if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
                 if (!plugin.getGameManager().getState(player).equals("PLAYING")) return;
@@ -61,26 +60,28 @@ public class MobManager implements Listener {
                 org.bukkit.block.Block clicked = event.getClickedBlock();
                 org.bukkit.block.Block target = clicked.getRelative(event.getBlockFace());
 
-                // --- CONTROLLO CONFINI AGGIUNTO ---
                 if (!(target.getX() >= -3 && target.getX() <= 3 && target.getZ() >= -3 && target.getZ() <= 3 && target.getY() > 100)) {
                     player.sendMessage("§cPuoi piazzare i mob solo nel riquadro nero!");
                     return;
                 }
 
                 Location spawnLoc = target.getLocation().add(0.5, 0, 0.5);
-                spawnLoc.setYaw(player.getLocation().getYaw() + 180f); // Rivolto verso il giocatore
+
+                // Arrotonda la visuale ai 90 gradi più vicini per posizionarli dritti
+                float yaw = player.getLocation().getYaw() + 180f;
+                yaw = Math.round(yaw / 90.0f) * 90.0f;
+                spawnLoc.setYaw(yaw);
 
                 SpawnEggMeta meta = (SpawnEggMeta) item.getItemMeta();
                 Entity entity = player.getWorld().spawnEntity(spawnLoc, meta.getSpawnedType());
-                entity.setCustomName("SpeedBuildersMob");
-                entity.setCustomNameVisible(false);
 
-                // Rende il mob una statuina
+                // Usa i Metadata invece del nome per renderli totalmente anonimi
+                entity.setMetadata("SpeedBuildersMob", new FixedMetadataValue(plugin, true));
+
                 if (entity instanceof LivingEntity) {
                     LivingEntity le = (LivingEntity) entity;
                     le.setAI(false);
                     le.setSilent(true);
-                    le.setInvulnerable(true);
                     le.setCollidable(false);
                 }
 
@@ -96,10 +97,9 @@ public class MobManager implements Listener {
         }
     }
 
-    // Permette di "spaccare" il mob per rimuoverlo e riavere l'uovo
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onMobHit(EntityDamageByEntityEvent event) {
-        if ("SpeedBuildersMob".equals(event.getEntity().getCustomName()) && event.getDamager() instanceof Player) {
+        if (event.getEntity().hasMetadata("SpeedBuildersMob") && event.getDamager() instanceof Player) {
             Player player = (Player) event.getDamager();
             if (plugin.getGameManager().getState(player).equals("PLAYING")) {
                 event.setCancelled(true);
@@ -114,10 +114,9 @@ public class MobManager implements Listener {
         }
     }
 
-    // Rimuove tutti i mob dall'arena alla fine
     public void clearMobs(World world) {
         for (Entity ent : world.getEntities()) {
-            if ("SpeedBuildersMob".equals(ent.getCustomName())) ent.remove();
+            if (ent.hasMetadata("SpeedBuildersMob")) ent.remove();
         }
     }
 }

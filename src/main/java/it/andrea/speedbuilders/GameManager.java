@@ -478,7 +478,14 @@ public class GameManager {
                             item = plugin.getMobManager().getMobEgg(p[0].substring(4));
                         } else {
                             try {
-                                item = new ItemStack(Material.valueOf(p[0]), 1, Byte.parseByte(p[1]));
+                                Material rawMat = Material.valueOf(p[0]);
+                                byte rawData = Byte.parseByte(p[1]);
+                                ItemStack normalized = normalizeItem(rawMat, rawData, category);
+                                if (normalized != null) {
+                                    item = new ItemStack(normalized.getType(), 1, normalized.getDurability());
+                                } else {
+                                    item = new ItemStack(rawMat, 1, rawData);
+                                }
                             } catch (Exception ignored) {}
                         }
                         break;
@@ -649,7 +656,6 @@ public class GameManager {
                 String rawMat = parts[3];
                 byte data = Byte.parseByte(parts[4]);
 
-                // Intercetta il Mob
                 if (rawMat.startsWith("MOB_")) {
                     blockCounts.put(rawMat, blockCounts.getOrDefault(rawMat, 0) + 1);
                     continue;
@@ -668,6 +674,7 @@ public class GameManager {
 
         List<String> hotbar = getBuildConfig(cat).getStringList("builds." + buildId + ".hotbar");
         int slotIndex = 0;
+        java.util.Set<String> processedHotbar = new java.util.HashSet<>();
 
         if (hotbar != null && !hotbar.isEmpty()) {
             for (String h : hotbar) {
@@ -676,6 +683,9 @@ public class GameManager {
                     String rawMat = matDataRaw[0];
 
                     if (rawMat.startsWith("MOB_")) {
+                        if (processedHotbar.contains(rawMat)) continue;
+                        processedHotbar.add(rawMat);
+
                         if (blockCounts.containsKey(rawMat)) {
                             ItemStack egg = plugin.getMobManager().getMobEgg(rawMat.substring(4));
                             int totalNeeded = blockCounts.get(rawMat);
@@ -693,6 +703,10 @@ public class GameManager {
                     ItemStack normalized = normalizeItem(Material.valueOf(rawMat), rawData, cat);
                     if (normalized != null) {
                         String key = normalized.getType().name() + ";" + normalized.getDurability();
+
+                        if (processedHotbar.contains(key)) continue; // Evita slot duplicati/vuoti
+                        processedHotbar.add(key);
+
                         if (blockCounts.containsKey(key)) {
                             int totalNeeded = blockCounts.get(key);
                             int toPutInSlot = Math.min(totalNeeded, 64);
@@ -707,7 +721,6 @@ public class GameManager {
             }
         }
 
-        // Rimanenze
         for (Map.Entry<String, Integer> entry : blockCounts.entrySet()) {
             String key = entry.getKey();
             if (key.startsWith("MOB_")) {
@@ -739,9 +752,8 @@ public class GameManager {
             }
         }
 
-        // Conta i Mob nell'arena
         for (org.bukkit.entity.Entity ent : world.getEntities()) {
-            if ("SpeedBuildersMob".equals(ent.getCustomName())) blocksInArena++;
+            if (ent.hasMetadata("SpeedBuildersMob")) blocksInArena++;
         }
 
         int expectedBlocks = 0;
@@ -767,13 +779,12 @@ public class GameManager {
 
                     String savedMatStr = parts[3];
 
-                    // Controllo Mob
                     if (savedMatStr.startsWith("MOB_")) {
                         org.bukkit.entity.EntityType expectedType = plugin.getMobManager().getEntityType(savedMatStr.substring(4));
                         boolean found = false;
                         Location checkLoc = new Location(world, Integer.parseInt(parts[0]) + 0.5, 100 + savedY + 0.5, Integer.parseInt(parts[2]) + 0.5);
                         for (org.bukkit.entity.Entity ent : world.getNearbyEntities(checkLoc, 0.5, 0.5, 0.5)) {
-                            if ("SpeedBuildersMob".equals(ent.getCustomName()) && ent.getType() == expectedType) {
+                            if (ent.hasMetadata("SpeedBuildersMob") && ent.getType() == expectedType) {
                                 found = true;
                                 break;
                             }
@@ -888,9 +899,8 @@ public class GameManager {
             }
         }
 
-        // Cerca mob errati o fuori posizione
         for (org.bukkit.entity.Entity ent : world.getEntities()) {
-            if ("SpeedBuildersMob".equals(ent.getCustomName())) {
+            if (ent.hasMetadata("SpeedBuildersMob")) {
                 int eX = ent.getLocation().getBlockX();
                 int eY = ent.getLocation().getBlockY() - 100;
                 int eZ = ent.getLocation().getBlockZ();
