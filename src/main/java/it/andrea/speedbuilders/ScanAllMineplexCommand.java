@@ -122,16 +122,16 @@ public class ScanAllMineplexCommand implements CommandExecutor {
                     byte data = b.getData();
 
                     if (b.getType() == Material.WALL_SIGN || b.getType() == Material.SIGN_POST) {
-                        Sign signState = (Sign) b.getState();
-                        String text = (signState.getLine(0) + "_" + signState.getLine(1) + "_" + signState.getLine(2))
-                                .replace(" ", "_").replaceAll("_+", "_").replaceAll("§.", "").trim().toUpperCase();
-
-                        if (text.startsWith("_")) text = text.substring(1);
-                        if (text.endsWith("_")) text = text.substring(0, text.length() - 1);
-                        if (text.isEmpty()) text = "PIG";
-
-                        mat = "MOB_" + text;
-                        data = 0;
+                        org.bukkit.block.Sign sign = (org.bukkit.block.Sign) b.getState();
+                        String line0 = sign.getLine(0);
+                        // Se la prima riga è scritta, è un mob
+                        if (line0 != null && !line0.trim().isEmpty()) {
+                            String mobName = line0.toUpperCase().replace(" ", "_");
+                            blockList.add(x + ";" + y + ";" + z + ";MOB_" + mobName + ";0");
+                            if (!uniqueMobs.contains("MOB_" + mobName + ";0")) uniqueMobs.add("MOB_" + mobName + ";0");
+                            continue;
+                        }
+                        // Se è vuoto, continua come blocco normale ignorando l'if!
                     }
 
                     blockList.add(x + ";" + (y - baseY + 1) + ";" + z + ";" + mat + ";" + data);

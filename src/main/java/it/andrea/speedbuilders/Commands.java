@@ -28,6 +28,9 @@ public class Commands implements CommandExecutor {
         GameManager gm = plugin.getGameManager();
         String cmdName = command.getName().toLowerCase();
 
+        if (cmdName.equals("gmc")) { player.setGameMode(org.bukkit.GameMode.CREATIVE); player.sendMessage("§aModalità Creativa attivata."); return true; }
+        if (cmdName.equals("gms")) { player.setGameMode(org.bukkit.GameMode.SURVIVAL); player.sendMessage("§eModalità Sopravvivenza attivata."); return true; }
+
         if (cmdName.equals("fly")) {
             if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
                 player.sendMessage("§cSei in Creativa, il volo è già forzato dal gioco!");

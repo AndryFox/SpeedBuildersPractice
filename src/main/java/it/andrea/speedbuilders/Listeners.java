@@ -239,16 +239,22 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onEntityDamage(EntityDamageEvent event) {
-        // Se l'entità è un nostro Mob, lascia che se ne occupi il MobManager per i colpi dei giocatori
+        // Rende i mob delle build totalmente invincibili a qualsiasi danno
         if (event.getEntity().hasMetadata("SpeedBuildersMob")) {
-            if (!(event instanceof org.bukkit.event.entity.EntityDamageByEntityEvent)) {
-                event.setCancelled(true);
-            }
+            event.setCancelled(true);
             return;
         }
 
         if (event.getEntity().getWorld().getName().equals("practice")) { event.setCancelled(true); return; }
         if (event.getEntity() instanceof Player && plugin.getGameManager().isLobbyWorld(event.getEntity().getWorld())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onMobInteract(PlayerInteractEntityEvent event) {
+        // Impedisce l'interazione (es. far nascere baby mob con l'uovo)
+        if (event.getRightClicked().hasMetadata("SpeedBuildersMob")) {
             event.setCancelled(true);
         }
     }
@@ -295,10 +301,19 @@ public class Listeners implements Listener {
                 event.setCancelled(true);
                 impostaPavimento(event.getPlayer(), false);
             }
-            // NPC 2: Pavimento Custom
-            else if (npcName.equalsIgnoreCase("Custom Floor") || npcName.equalsIgnoreCase("Pavimento Custom")) {
+            else if (npcName.equalsIgnoreCase("Custom Build")) {
                 event.setCancelled(true);
-                impostaPavimento(event.getPlayer(), true);
+                Player player = event.getPlayer(); // <- Definizione aggiunta qui
+
+                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+                    plugin.getGameManager().saveCustomFloor(player);
+                    player.performCommand("lobby");
+                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                } else {
+                    player.performCommand("p"); // Lo manda nell'arena vuota
+                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
+                    player.sendMessage("§eSei in modalità Editor! Costruisci il tuo pavimento e clicca di nuovo l'NPC per salvare.");
+                }
             }
         }
     }

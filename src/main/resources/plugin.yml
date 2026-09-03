@@ -3,6 +3,10 @@ version: 1.0
 main: it.andrea.speedbuilders.Main
 depend: [HolographicDisplays]
 commands:
+  gmc:
+    description: /gamemode creative
+  gms:
+    description: /gamemode survival
   map:
     description: Gestione arene
   practice:
