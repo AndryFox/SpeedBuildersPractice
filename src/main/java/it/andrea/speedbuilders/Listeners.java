@@ -273,7 +273,7 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onCitizensNpcClick(PlayerInteractEntityEvent event) {
-        // Ignora il click della mano secondaria per evitare il doppio messaggio
+        // Ignora il doppio click generato dalla mano secondaria
         if (event.getHand() == org.bukkit.inventory.EquipmentSlot.OFF_HAND) return;
 
         if (event.getRightClicked().hasMetadata("NPC")) {
@@ -299,52 +299,39 @@ public class Listeners implements Listener {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p leave");
             }
-            // NPC 1: Pavimento Normale
+            // --- GESTIONE PAVIMENTO E CUSTOM BUILD ---
             else if (npcName.equalsIgnoreCase("Build Floor") || npcName.equalsIgnoreCase("Pavimento Normale")) {
                 event.setCancelled(true);
-                impostaPavimento(event.getPlayer(), false);
+                Player player = event.getPlayer();
+                plugin.getGameManager().clearTemporaryFloor(player);
+                int buildId = plugin.getGameManager().getCurrentBuild(player);
+                if (buildId != -1) {
+                    plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
+                    player.sendMessage("§aPavimento ripristinato alla normalità per questa build.");
+                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_PLING, 1f, 2f);
+                }
             }
-            // NPC 2: Pavimento Custom (Seleziona lo stile)
             else if (npcName.equalsIgnoreCase("Custom Floor") || npcName.equalsIgnoreCase("Pavimento Custom")) {
                 event.setCancelled(true);
-                impostaPavimento(event.getPlayer(), true);
+                plugin.getGameManager().saveAndApplyCustomFloor(event.getPlayer());
             }
-            // NPC 3: Custom Build (Editor in Creativa)
             else if (npcName.equalsIgnoreCase("Custom Build")) {
                 event.setCancelled(true);
                 Player player = event.getPlayer();
 
                 if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-                    plugin.getGameManager().saveCustomFloor(player);
-                    player.performCommand("lobby");
+                    // Salva la build temporanea sull'ID 999999 e la avvia
+                    plugin.getGameManager().saveBuild(player, 999999, "Build Temporanea");
                     player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                    plugin.getGameManager().loadBuild(player, 999999, "FearGames");
+                    player.sendMessage("§aBuild temporanea pronta! Clicca sul quarzo per giocarla.");
                 } else {
-                    player.performCommand("p"); // Lo manda nell'arena vuota
+                    // Entra in modalità Creativa per costruire
+                    plugin.getGameManager().forceReset(player);
                     player.setGameMode(org.bukkit.GameMode.CREATIVE);
-                    player.sendMessage("§eSei in modalità Editor! Costruisci il tuo pavimento e clicca di nuovo l'NPC per salvare.");
+                    player.sendMessage("§eModalità Custom Build! Costruisci quello che vuoi e clicca di nuovo l'NPC per testarla.");
                 }
             }
-        }
-    }
-
-    // Metodo helper per cambiare pavimento senza duplicare codice
-    private void impostaPavimento(Player player, boolean isCustom) {
-        boolean currentState = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".custom_floor", false);
-
-        if (currentState == isCustom) {
-            player.sendMessage("§cHai già selezionato questo stile di pavimento!");
-            return;
-        }
-
-        plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor", isCustom);
-        plugin.saveConfig();
-
-        player.sendMessage("§aModalità pavimento aggiornata a: " + (isCustom ? "§eCustom Floor" : "§eBuild Floor"));
-        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, 2f);
-
-        int buildId = plugin.getGameManager().getCurrentBuild(player);
-        if (buildId != -1) {
-            plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
         }
     }
 

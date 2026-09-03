@@ -35,7 +35,9 @@ public class GameManager {
     private final HashMap<Player, String> activeSearch = new HashMap<>();
     private final HashMap<Player, String> currentCategory = new HashMap<>();
     private final HashMap<Player, Boolean> continuousRandom = new HashMap<>();
+    private final HashMap<Player, List<String>> temporaryFloors = new HashMap<>();
 
+    public void clearTemporaryFloor(Player p) { temporaryFloors.remove(p); }
     public void setAwaitingSearch(Player p, boolean val) { if (val) awaitingSearch.put(p, true); else awaitingSearch.remove(p); }
     public boolean isAwaitingSearch(Player p) { return awaitingSearch.containsKey(p); }
     public void setActiveSearch(Player p, String search) { activeSearch.put(p, search); }
@@ -62,66 +64,34 @@ public class GameManager {
         return -1;
     }
 
-    public Material getInventoryItemMaterial(Material blockMat) {
-        switch (blockMat.name()) {
-            case "WOODEN_DOOR": return Material.WOOD_DOOR;
-            case "IRON_DOOR_BLOCK": return Material.IRON_DOOR;
-            case "SPRUCE_DOOR": return Material.SPRUCE_DOOR_ITEM;
-            case "BIRCH_DOOR": return Material.BIRCH_DOOR_ITEM;
-            case "JUNGLE_DOOR": return Material.JUNGLE_DOOR_ITEM;
-            case "ACACIA_DOOR": return Material.ACACIA_DOOR_ITEM;
-            case "DARK_OAK_DOOR": return Material.DARK_OAK_DOOR_ITEM;
-            case "FLOWER_POT": return Material.FLOWER_POT_ITEM;
-            case "BREWING_STAND": return Material.BREWING_STAND_ITEM;
-            case "CAULDRON": return Material.CAULDRON_ITEM;
-            case "BED_BLOCK": return Material.BED;
-            case "DIODE_BLOCK_OFF":
-            case "DIODE_BLOCK_ON": return Material.DIODE;
-            case "REDSTONE_COMPARATOR_OFF":
-            case "REDSTONE_COMPARATOR_ON": return Material.REDSTONE_COMPARATOR;
-            case "SUGAR_CANE_BLOCK": return Material.SUGAR_CANE;
-            case "REDSTONE_WIRE": return Material.REDSTONE;
-            case "SIGN_POST":
-            case "WALL_SIGN": return Material.SIGN;
-            default: return blockMat;
-        }
-    }
+    public void saveAndApplyCustomFloor(Player player) {
+        World w = player.getWorld();
+        List<String> currentCustom = temporaryFloors.getOrDefault(player, new ArrayList<>());
 
-    public void saveCustomFloor(Player player) {
-        World w = Bukkit.getWorld("practice");
-        if (w == null) {
-            player.sendMessage("§cErrore: Mondo practice non trovato!");
-            return;
-        }
-
-        java.util.List<String> floorBlocks = new java.util.ArrayList<>();
-
-        // Scansiona l'area 7x7
+        boolean foundAny = false;
+        // Scansiona i blocchi che il giocatore ha piazzato in superficie (Y=101)
         for (int x = -3; x <= 3; x++) {
             for (int z = -3; z <= 3; z++) {
                 Block b101 = w.getBlockAt(x, 101, z);
-                Block b100 = w.getBlockAt(x, 100, z);
-
                 if (b101.getType() != Material.AIR) {
-                    // Salva in memoria il blocco che hai piazzato sopra al pavimento
-                    floorBlocks.add(x + ";" + z + ";" + b101.getType().name() + ";" + b101.getData());
-
-                    // Applica fisicamente il blocco al livello del pavimento (Y=100)
+                    // Li salva in memoria e li spinge giù
+                    currentCustom.add(x + ";" + z + ";" + b101.getType().name() + ";" + b101.getData());
+                    Block b100 = w.getBlockAt(x, 100, z);
                     b100.setType(b101.getType());
                     b100.setData(b101.getData());
-
-                    // Rimuove il blocco da Y=101
                     b101.setType(Material.AIR);
-                } else {
-                    // Se a 101 c'è aria, mantiene e salva il blocco che si trovava già a Y=100
-                    floorBlocks.add(x + ";" + z + ";" + b100.getType().name() + ";" + b100.getData());
+                    foundAny = true;
                 }
             }
         }
 
-        plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor_data", floorBlocks);
-        plugin.saveConfig();
-        player.sendMessage("§aPavimento personalizzato salvato (i blocchi a Y=101 sono stati inglobati nel terreno)!");
+        if (foundAny) {
+            temporaryFloors.put(player, currentCustom);
+            player.sendMessage("§aModifiche al pavimento applicate e salvate per la sessione attuale!");
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+        } else {
+            player.sendMessage("§cNon hai piazzato nessun blocco a livello terra (sopra il pavimento) da salvare!");
+        }
     }
 
     public String getState(Player player) { return playerStates.getOrDefault(player, "IDLE"); }
@@ -216,84 +186,60 @@ public class GameManager {
     @SuppressWarnings("deprecation")
     public void generateFloor(Player player, int buildId, String category) {
         World world = player.getWorld();
-        boolean customFloor = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".custom_floor", false);
         FileConfiguration config = getBuildConfig(category);
         List<String> blocksData = config.getStringList("builds." + buildId + ".blocks");
 
-        if (customFloor) {
-            if (plugin.getConfig().contains("players." + player.getUniqueId() + ".custom_floor_data")) {
-                // Il giocatore ha disegnato il suo pavimento: LO RISPETTIAMO AL 100% (nessuna proiezione che lo rovini)
-                List<String> customData = plugin.getConfig().getStringList("players." + player.getUniqueId() + ".custom_floor_data");
-                for (String data : customData) {
-                    String[] parts = data.split(";");
-                    if (parts.length == 4) {
-                        world.getBlockAt(Integer.parseInt(parts[0]), 100, Integer.parseInt(parts[1]))
-                                .setTypeIdAndData(Material.valueOf(parts[2]).getId(), Byte.parseByte(parts[3]), false);
-                    }
-                }
-            } else {
-                // Se non ha disegnato nulla, mettiamo l'erba e proiettiamo la base della build
-                for (int x = -3; x <= 3; x++) {
-                    for (int z = -3; z <= 3; z++) {
-                        world.getBlockAt(x, 100, z).setType(Material.GRASS);
-                    }
-                }
-                int targetY = category.equals("Mineplex") ? 2 : 1;
-                for (String dataString : blocksData) {
-                    String[] parts = dataString.split(";");
-                    if (parts.length == 5 && Integer.parseInt(parts[1]) == targetY) {
-                        Material m = Material.valueOf(parts[3]);
-                        if (m.isSolid() && !m.name().contains("FENCE") && !m.name().contains("DOOR") && !m.name().contains("STEP") && !m.name().contains("SKULL")) {
-                            world.getBlockAt(Integer.parseInt(parts[0]), 100, Integer.parseInt(parts[2]))
-                                    .setTypeIdAndData(m.getId(), Byte.parseByte(parts[4]), false);
+        // 1. Genera il pavimento base (Vetro per Fear, Terra/Legno per Mineplex)
+        for (int x = -3; x <= 3; x++) {
+            for (int z = -3; z <= 3; z++) {
+                Block floorBlock = world.getBlockAt(x, 100, z);
+
+                if (category.equals("FearGames")) {
+                    boolean found = false;
+                    for (String dataString : blocksData) {
+                        String[] parts = dataString.split(";");
+                        if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 0 && Integer.parseInt(parts[2]) == z) {
+                            floorBlock.setType(Material.valueOf(parts[3]));
+                            floorBlock.setData(Byte.parseByte(parts[4]));
+                            found = true;
+                            break;
                         }
+                    }
+                    if (!found) {
+                        floorBlock.setType(Material.STAINED_GLASS);
+                        floorBlock.setData((byte) 15);
+                    }
+                } else if (category.equals("Mineplex")) {
+                    boolean found = false;
+                    for (String dataString : blocksData) {
+                        String[] parts = dataString.split(";");
+                        if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 1 && Integer.parseInt(parts[2]) == z) {
+                            Material m = Material.valueOf(parts[3]);
+                            if (!m.isSolid() || m.name().contains("FENCE") || m.name().contains("DOOR") || m.name().contains("SKULL") || m.name().contains("STEP")) {
+                                floorBlock.setType(Material.DIRT);
+                            } else {
+                                floorBlock.setType(m);
+                                floorBlock.setData(Byte.parseByte(parts[4]));
+                            }
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        floorBlock.setType(Material.WOOD);
+                        floorBlock.setData((byte) 1);
                     }
                 }
             }
-        } else {
-            // Modalità Pavimento Normale
-            for (int x = -3; x <= 3; x++) {
-                for (int z = -3; z <= 3; z++) {
-                    Block floorBlock = world.getBlockAt(x, 100, z);
+        }
 
-                    if (category.equals("FearGames")) {
-                        boolean found = false;
-                        // Cerca se la build ha un pavimento specifico salvato a y=0
-                        for (String dataString : blocksData) {
-                            String[] parts = dataString.split(";");
-                            if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 0 && Integer.parseInt(parts[2]) == z) {
-                                floorBlock.setType(Material.valueOf(parts[3]));
-                                floorBlock.setData(Byte.parseByte(parts[4]));
-                                found = true;
-                                break;
-                            }
-                        }
-                        // Se non è personalizzato, usa il vetro nero classico
-                        if (!found) {
-                            floorBlock.setType(Material.STAINED_GLASS);
-                            floorBlock.setData((byte) 15);
-                        }
-                    } else if (category.equals("Mineplex")) {
-                        boolean found = false;
-                        for (String dataString : blocksData) {
-                            String[] parts = dataString.split(";");
-                            if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 1 && Integer.parseInt(parts[2]) == z) {
-                                Material m = Material.valueOf(parts[3]);
-                                if (!m.isSolid() || m.name().contains("FENCE") || m.name().contains("DOOR") || m.name().contains("SKULL") || m.name().contains("STEP")) {
-                                    floorBlock.setType(Material.DIRT);
-                                } else {
-                                    floorBlock.setType(m);
-                                    floorBlock.setData(Byte.parseByte(parts[4]));
-                                }
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            floorBlock.setType(Material.WOOD);
-                            floorBlock.setData((byte) 1);
-                        }
-                    }
+        // 2. Applica le TUE modifiche temporanee del Custom Floor sopra la base
+        if (temporaryFloors.containsKey(player)) {
+            for (String data : temporaryFloors.get(player)) {
+                String[] parts = data.split(";");
+                if (parts.length == 4) {
+                    world.getBlockAt(Integer.parseInt(parts[0]), 100, Integer.parseInt(parts[1]))
+                            .setTypeIdAndData(Material.valueOf(parts[2]).getId(), Byte.parseByte(parts[3]), false);
                 }
             }
         }
@@ -341,6 +287,11 @@ public class GameManager {
     public void loadBuild(Player player, int id, String category) {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
+
+        // Se l'id della build che sta caricando è diverso da quello precedente, pulisci il pavimento custom
+        if (currentBuild.getOrDefault(player, -1) != id) {
+            clearTemporaryFloor(player);
+        }
 
         currentCategory.put(player, category);
         FileConfiguration config = getBuildConfig(category);
