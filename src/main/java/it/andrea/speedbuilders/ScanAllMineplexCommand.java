@@ -116,7 +116,7 @@ public class ScanAllMineplexCommand implements CommandExecutor {
                 for (int z = -3; z <= 3; z++) {
                     Block b = world.getBlockAt(centerX + x, y, centerZ + z);
 
-                    if (b.getType() == Material.AIR || b.getType() == Material.SPONGE) continue;
+                    if (b.getType() == Material.AIR) continue;
 
                     String mat = b.getType().name();
                     byte data = b.getData();

@@ -84,7 +84,7 @@ public class SaveMineplexCommand implements CommandExecutor {
             for (int y = floorY; y < spongeY; y++) {
                 for (int z = -3; z <= 3; z++) {
                     Block b = world.getBlockAt(centerX + x, y, centerZ + z);
-                    if (b.getType() == Material.AIR || b.getType() == Material.SPONGE || b.getType() == Material.WALL_SIGN || b.getType() == Material.SIGN_POST) continue;
+                    if (b.getType() == Material.AIR || b.getType() == Material.WALL_SIGN || b.getType() == Material.SIGN_POST) continue;
 
                     String mat = b.getType().name();
                     byte data = b.getData();

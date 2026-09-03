@@ -26,6 +26,7 @@ public class ItemUtils {
             case DROPPER:
             case HOPPER:
             case ENDER_PORTAL_FRAME:
+            case SPONGE:
             case ANVIL:
             case PUMPKIN:
             case JACK_O_LANTERN:

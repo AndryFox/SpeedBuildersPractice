@@ -345,7 +345,7 @@ public class GameManager {
         }
 
         String name = config.getString("builds." + id + ".name", "Sconosciuta");
-        player.sendMessage("§aBuild '" + name + "' (" + category + ") caricata! Clicca sul quarzo per iniziare.");
+        player.sendMessage("§aBuild '" + name + "' (" + category + ") §e[ID: " + id + "]§a caricata! Clicca sul quarzo per iniziare.");
         currentBuild.put(player, id);
     }
 
