@@ -291,6 +291,11 @@ public class GameManager {
                             le.setSilent(true);
                             le.setCollidable(false);
                             le.setRemoveWhenFarAway(false);
+
+                            // Forza l'età adulta anche nell'anteprima
+                            if (ent instanceof org.bukkit.entity.Zombie) {
+                                ((org.bukkit.entity.Zombie) ent).setBaby(false);
+                            }
                         }
                         continue;
                     }

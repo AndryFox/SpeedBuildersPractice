@@ -68,11 +68,11 @@ public class MobManager implements Listener {
 
                 Location spawnLoc = target.getLocation().add(0.5, 0, 0.5);
 
-                float yaw = player.getLocation().getYaw() + 180f;
-                yaw = Math.round(yaw / 90.0f) * 90.0f;
-                spawnLoc.setYaw(yaw);
+                // Imposta la rotazione fissa verso Nord
+                spawnLoc.setYaw(180f);
 
                 SpawnEggMeta meta = (SpawnEggMeta) item.getItemMeta();
+
                 Entity entity = player.getWorld().spawnEntity(spawnLoc, meta.getSpawnedType());
 
                 entity.setMetadata("SpeedBuildersMob", new FixedMetadataValue(plugin, true));
@@ -83,6 +83,11 @@ public class MobManager implements Listener {
                     le.setSilent(true);
                     le.setCollidable(false);
                     le.setRemoveWhenFarAway(false);
+
+                    // Forza l'età adulta per tutti i tipi di zombie (inclusi i Pigman)
+                    if (entity instanceof org.bukkit.entity.Zombie) {
+                        ((org.bukkit.entity.Zombie) entity).setBaby(false);
+                    }
                 }
 
                 if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) {
