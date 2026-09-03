@@ -263,6 +263,18 @@ public class GameManager {
         clearPlot(world);
         generateFloor(player, id, category);
 
+        // Estrae il tipo di teschio corretto dalla configurazione della hotbar
+        List<String> hotbar = config.getStringList("builds." + id + ".hotbar");
+        byte expectedSkullType = 0;
+        if (hotbar != null) {
+            for (String h : hotbar) {
+                if (h.startsWith("SKULL_ITEM;")) {
+                    expectedSkullType = Byte.parseByte(h.split(";")[1]);
+                    break;
+                }
+            }
+        }
+
         List<String> blocksData = config.getStringList("builds." + id + ".blocks");
         for (String dataString : blocksData) {
             String[] parts = dataString.split(";");
@@ -277,7 +289,6 @@ public class GameManager {
                         y = y - 1;
                     }
 
-                    // Se è un mob, lo spawna come statuina per l'anteprima!
                     if (parts[3].startsWith("MOB_")) {
                         org.bukkit.entity.EntityType type = plugin.getMobManager().getEntityType(parts[3].substring(4));
                         Location loc = new Location(world, x + 0.5, 100 + y, z + 0.5, 180f, 0f);
@@ -292,7 +303,6 @@ public class GameManager {
                             le.setCollidable(false);
                             le.setRemoveWhenFarAway(false);
 
-                            // Forza l'età adulta anche nell'anteprima
                             if (ent instanceof org.bukkit.entity.Zombie) {
                                 ((org.bukkit.entity.Zombie) ent).setBaby(false);
                             }
@@ -305,6 +315,13 @@ public class GameManager {
 
                     Block block = world.getBlockAt(x, 100 + y, z);
                     block.setType(material); block.setData(data);
+
+                    // Applica visivamente il teschio Wither se richiesto
+                    if (material == Material.SKULL && expectedSkullType >= 0 && expectedSkullType < org.bukkit.SkullType.values().length) {
+                        org.bukkit.block.Skull skull = (org.bukkit.block.Skull) block.getState();
+                        skull.setSkullType(org.bukkit.SkullType.values()[expectedSkullType]);
+                        skull.update();
+                    }
                 } catch (Exception ignored) {}
             }
         }
@@ -667,7 +684,19 @@ public class GameManager {
         player.getInventory().clear();
         String cat = getCurrentCategory(player);
         List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
+        List<String> hotbar = getBuildConfig(cat).getStringList("builds." + buildId + ".hotbar");
         HashMap<String, Integer> blockCounts = new HashMap<>();
+
+        // Identifica in anticipo quale teschio serve
+        byte expectedSkullType = 0;
+        if (hotbar != null) {
+            for (String h : hotbar) {
+                if (h.startsWith("SKULL_ITEM;")) {
+                    expectedSkullType = Byte.parseByte(h.split(";")[1]);
+                    break;
+                }
+            }
+        }
 
         for (String dataString : blocksData) {
             String[] parts = dataString.split(";");
@@ -687,13 +716,16 @@ public class GameManager {
 
                 ItemStack normalized = normalizeItem(material, data, cat);
                 if (normalized != null) {
+                    // Impone il tipo Wither (o altro) al conteggio dell'inventario
+                    if (normalized.getType() == Material.SKULL_ITEM) {
+                        normalized.setDurability(expectedSkullType);
+                    }
                     String matData = normalized.getType().name() + ";" + normalized.getDurability();
                     blockCounts.put(matData, blockCounts.getOrDefault(matData, 0) + normalized.getAmount());
                 }
             }
         }
 
-        List<String> hotbar = getBuildConfig(cat).getStringList("builds." + buildId + ".hotbar");
         int slotIndex = 0;
         java.util.Set<String> processedHotbar = new java.util.HashSet<>();
 
@@ -723,9 +755,12 @@ public class GameManager {
                     byte rawData = Byte.parseByte(matDataRaw[1]);
                     ItemStack normalized = normalizeItem(Material.valueOf(rawMat), rawData, cat);
                     if (normalized != null) {
+                        if (normalized.getType() == Material.SKULL_ITEM) {
+                            normalized.setDurability(expectedSkullType);
+                        }
                         String key = normalized.getType().name() + ";" + normalized.getDurability();
 
-                        if (processedHotbar.contains(key)) continue; // Evita slot duplicati/vuoti
+                        if (processedHotbar.contains(key)) continue;
                         processedHotbar.add(key);
 
                         if (blockCounts.containsKey(key)) {

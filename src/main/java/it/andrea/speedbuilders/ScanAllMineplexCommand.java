@@ -141,9 +141,16 @@ public class ScanAllMineplexCommand implements CommandExecutor {
                             if (!uniqueMobs.contains(mat + ";" + data)) uniqueMobs.add(mat + ";" + data);
                         } else {
                             String normMat = mat;
+                            byte normData = data;
                             if (mat.equals("DAYLIGHT_DETECTOR_INVERTED")) normMat = "DAYLIGHT_DETECTOR";
                             if (mat.equals("GLOWING_REDSTONE_ORE")) normMat = "REDSTONE_ORE";
-                            String key = normMat + ";" + data;
+                            // Estrae il vero tipo di teschio e lo salva in SKULL_ITEM per la hotbar
+                            if (mat.equals("SKULL")) {
+                                normMat = "SKULL_ITEM";
+                                org.bukkit.block.Skull skull = (org.bukkit.block.Skull) b.getState();
+                                normData = (byte) skull.getSkullType().ordinal();
+                            }
+                            String key = normMat + ";" + normData;
                             if (!uniqueBlocks.contains(key)) uniqueBlocks.add(key);
                         }
                     }

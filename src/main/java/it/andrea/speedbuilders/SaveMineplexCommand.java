@@ -89,7 +89,13 @@ public class SaveMineplexCommand implements CommandExecutor {
                     String mat = b.getType().name();
                     byte data = b.getData();
                     blockList.add(x + ";" + (y - floorY + 1) + ";" + z + ";" + mat + ";" + data);
-                    if (uniqueMaterials.size() < 9) uniqueMaterials.add(mat + ";" + data);
+
+                    if (mat.equals("SKULL")) {
+                        org.bukkit.block.Skull skull = (org.bukkit.block.Skull) b.getState();
+                        if (uniqueMaterials.size() < 9) uniqueMaterials.add("SKULL_ITEM;" + skull.getSkullType().ordinal());
+                    } else {
+                        if (uniqueMaterials.size() < 9) uniqueMaterials.add(mat + ";" + data);
+                    }
                 }
             }
         }
