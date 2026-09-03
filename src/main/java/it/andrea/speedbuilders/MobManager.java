@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
@@ -67,7 +68,6 @@ public class MobManager implements Listener {
 
                 Location spawnLoc = target.getLocation().add(0.5, 0, 0.5);
 
-                // Arrotonda la visuale ai 90 gradi più vicini per posizionarli dritti
                 float yaw = player.getLocation().getYaw() + 180f;
                 yaw = Math.round(yaw / 90.0f) * 90.0f;
                 spawnLoc.setYaw(yaw);
@@ -75,7 +75,6 @@ public class MobManager implements Listener {
                 SpawnEggMeta meta = (SpawnEggMeta) item.getItemMeta();
                 Entity entity = player.getWorld().spawnEntity(spawnLoc, meta.getSpawnedType());
 
-                // Usa i Metadata invece del nome per renderli totalmente anonimi
                 entity.setMetadata("SpeedBuildersMob", new FixedMetadataValue(plugin, true));
 
                 if (entity instanceof LivingEntity) {
@@ -83,6 +82,7 @@ public class MobManager implements Listener {
                     le.setAI(false);
                     le.setSilent(true);
                     le.setCollidable(false);
+                    le.setInvulnerable(true);
                     le.setRemoveWhenFarAway(false);
                 }
 
@@ -112,6 +112,14 @@ public class MobManager implements Listener {
                     if (plugin.getGameManager().checkBuildPerfect(player)) plugin.getGameManager().handlePerfect(player);
                 }, 2L);
             }
+        }
+    }
+
+    // --- NUOVO EVENTO: Impedisce alle statuine di prendere fuoco al sole ---
+    @EventHandler
+    public void onMobCombust(EntityCombustEvent event) {
+        if (event.getEntity().hasMetadata("SpeedBuildersMob")) {
+            event.setCancelled(true);
         }
     }
 
