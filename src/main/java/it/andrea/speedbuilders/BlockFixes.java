@@ -43,7 +43,6 @@ public class BlockFixes implements Listener {
             Block clicked = event.getClickedBlock();
             if (clicked == null) return;
 
-            // Innesca il check di vittoria se accendi o spegni un sensore solare
             if (clicked.getType() == Material.DAYLIGHT_DETECTOR || clicked.getType() == Material.DAYLIGHT_DETECTOR_INVERTED) {
                 triggerPerfectCheck(event.getPlayer());
             }
@@ -55,9 +54,11 @@ public class BlockFixes implements Listener {
                         mat.contains("DISPENSER") || mat.contains("DROPPER") || mat.contains("ENCHANTMENT") ||
                         mat.contains("BED") || mat.contains("BUTTON") || mat.contains("LEVER") ||
                         mat.contains("DIODE") || mat.contains("COMPARATOR") || mat.contains("FENCE_GATE") ||
-                        mat.contains("TRAP_DOOR") || mat.contains("NOTE_BLOCK") || mat.contains("JUKEBOX")) {
+                        mat.contains("TRAP_DOOR") || mat.contains("NOTE_BLOCK") || mat.contains("JUKEBOX") ||
+                        mat.contains("OBSIDIAN")) {
 
                     event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+                    event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW); // <- FIX: Ti permette di piazzarci roba sopra!
                 }
             }
 
@@ -191,13 +192,31 @@ public class BlockFixes implements Listener {
         if (player.getWorld().getName().equals("practice")) {
             GameManager gm = plugin.getGameManager();
             if (gm.getState(player).equals("PLAYING")) {
-                event.setDropItems(false); // Niente drop a terra (fix per i doppi fiori, ecc.)
+                event.setDropItems(false);
 
                 Block b = event.getBlock();
                 Material type = b.getType();
+                byte data = b.getData();
 
-                // Restituisce l'oggetto perfetto per l'inventario tramite GameManager
-                ItemStack toGive = gm.normalizeItem(type, b.getData(), gm.getCurrentCategory(player));
+                // <- FIX: Pulisce la cima/base di fiori alti e porte e usa sempre il dato della base per ridarti l'item corretto
+                if (type == Material.DOUBLE_PLANT || type.name().contains("DOOR")) {
+                    Block top = (data >= 8) ? b : b.getRelative(BlockFace.UP);
+                    Block bottom = (data >= 8) ? b.getRelative(BlockFace.DOWN) : b;
+
+                    byte bottomData = bottom.getData();
+
+                    if (top.getType() == type) top.setType(Material.AIR);
+                    if (bottom.getType() == type) bottom.setType(Material.AIR);
+
+                    ItemStack toGive = ItemUtils.normalizeItem(type, bottomData, gm.getCurrentCategory(player));
+                    if (toGive != null) {
+                        player.getInventory().addItem(toGive);
+                    }
+                    triggerPerfectCheck(player);
+                    return;
+                }
+
+                ItemStack toGive = ItemUtils.normalizeItem(type, data, gm.getCurrentCategory(player));
                 if (toGive != null) {
                     player.getInventory().addItem(toGive);
                 }
