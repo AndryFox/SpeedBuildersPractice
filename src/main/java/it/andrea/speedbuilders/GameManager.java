@@ -88,7 +88,7 @@ public class GameManager {
     }
 
     public void saveCustomFloor(Player player) {
-        World w = Bukkit.getWorld("practice"); // Ora punta fisso all'arena!
+        World w = Bukkit.getWorld("practice");
         if (w == null) {
             player.sendMessage("§cErrore: Mondo practice non trovato!");
             return;
@@ -96,16 +96,32 @@ public class GameManager {
 
         java.util.List<String> floorBlocks = new java.util.ArrayList<>();
 
-        // Salva i blocchi al livello Y=100 (Pavimento)
+        // Scansiona l'area 7x7
         for (int x = -3; x <= 3; x++) {
             for (int z = -3; z <= 3; z++) {
-                Block b = w.getBlockAt(x, 100, z);
-                floorBlocks.add(x + ";" + z + ";" + b.getType().name() + ";" + b.getData());
+                Block b101 = w.getBlockAt(x, 101, z);
+                Block b100 = w.getBlockAt(x, 100, z);
+
+                if (b101.getType() != Material.AIR) {
+                    // Salva in memoria il blocco che hai piazzato sopra al pavimento
+                    floorBlocks.add(x + ";" + z + ";" + b101.getType().name() + ";" + b101.getData());
+
+                    // Applica fisicamente il blocco al livello del pavimento (Y=100)
+                    b100.setType(b101.getType());
+                    b100.setData(b101.getData());
+
+                    // Rimuove il blocco da Y=101
+                    b101.setType(Material.AIR);
+                } else {
+                    // Se a 101 c'è aria, mantiene e salva il blocco che si trovava già a Y=100
+                    floorBlocks.add(x + ";" + z + ";" + b100.getType().name() + ";" + b100.getData());
+                }
             }
         }
+
         plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor_data", floorBlocks);
         plugin.saveConfig();
-        player.sendMessage("§aPavimento personalizzato salvato con successo!");
+        player.sendMessage("§aPavimento personalizzato salvato (i blocchi a Y=101 sono stati inglobati nel terreno)!");
     }
 
     public String getState(Player player) { return playerStates.getOrDefault(player, "IDLE"); }

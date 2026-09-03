@@ -273,6 +273,9 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onCitizensNpcClick(PlayerInteractEntityEvent event) {
+        // Ignora il click della mano secondaria per evitare il doppio messaggio
+        if (event.getHand() == org.bukkit.inventory.EquipmentSlot.OFF_HAND) return;
+
         if (event.getRightClicked().hasMetadata("NPC")) {
             String npcName = org.bukkit.ChatColor.stripColor(event.getRightClicked().getName());
 
