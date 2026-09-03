@@ -137,31 +137,14 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onNPCInteract(PlayerInteractEntityEvent event) {
+        if (event.getRightClicked().hasMetadata("NPC")) return; // Ignora se è di Citizens
+
         if (event.getRightClicked().getCustomName() != null) {
             String npcName = event.getRightClicked().getCustomName();
-
             if (npcName.equals("§c§lExit")) {
                 event.setCancelled(true);
                 event.getRightClicked().remove();
-                event.getPlayer().sendMessage("§aNPC di prova eliminato!");
-            }
-            else if (npcName.equals("§e§lBuild Floor") || npcName.equals("§e§lCustom Floor")) {
-                event.setCancelled(true);
-                Player player = event.getPlayer();
-
-                boolean currentState = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".custom_floor", false);
-                boolean newState = !currentState;
-                plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor", newState);
-                plugin.saveConfig();
-
-                event.getRightClicked().setCustomName(newState ? "§e§lCustom Floor" : "§e§lBuild Floor");
-                player.sendMessage("§aModalità pavimento aggiornata a: " + (newState ? "§eCustom Floor" : "§eBuild Floor"));
-                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, 2f);
-
-                int buildId = plugin.getGameManager().getCurrentBuild(player);
-                if (buildId != -1) {
-                    plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
-                }
+                event.getPlayer().sendMessage("§aNPC Exit eliminato!");
             }
         }
     }
@@ -169,8 +152,7 @@ public class Listeners implements Listener {
     @EventHandler
     public void onNPCDamage(EntityDamageEvent event) {
         if (event.getEntity().getCustomName() != null) {
-            String name = event.getEntity().getCustomName();
-            if (name.equals("§c§lExit") || name.equals("§e§lBuild Floor") || name.equals("§e§lCustom Floor")) {
+            if (event.getEntity().getCustomName().equals("§c§lExit")) {
                 event.setCancelled(true);
             }
         }
@@ -308,24 +290,37 @@ public class Listeners implements Listener {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p leave");
             }
-            else if (npcName.equalsIgnoreCase("Build Floor") || npcName.equalsIgnoreCase("Custom Floor") || npcName.equalsIgnoreCase("Stile Pavimento")) {
+            // NPC 1: Pavimento Normale
+            else if (npcName.equalsIgnoreCase("Build Floor") || npcName.equalsIgnoreCase("Pavimento Normale")) {
                 event.setCancelled(true);
-                Player player = event.getPlayer();
-
-                boolean currentState = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".custom_floor", false);
-                boolean newState = !currentState;
-                plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor", newState);
-                plugin.saveConfig();
-
-                // Feedback personale in chat (così ogni giocatore sa la PROPRIA impostazione)
-                player.sendMessage("§aModalità pavimento aggiornata a: " + (newState ? "§eCustom Floor" : "§eBuild Floor"));
-                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, 2f);
-
-                int buildId = plugin.getGameManager().getCurrentBuild(player);
-                if (buildId != -1) {
-                    plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
-                }
+                impostaPavimento(event.getPlayer(), false);
             }
+            // NPC 2: Pavimento Custom
+            else if (npcName.equalsIgnoreCase("Custom Floor") || npcName.equalsIgnoreCase("Pavimento Custom")) {
+                event.setCancelled(true);
+                impostaPavimento(event.getPlayer(), true);
+            }
+        }
+    }
+
+    // Metodo helper per cambiare pavimento senza duplicare codice
+    private void impostaPavimento(Player player, boolean isCustom) {
+        boolean currentState = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".custom_floor", false);
+
+        if (currentState == isCustom) {
+            player.sendMessage("§cHai già selezionato questo stile di pavimento!");
+            return;
+        }
+
+        plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor", isCustom);
+        plugin.saveConfig();
+
+        player.sendMessage("§aModalità pavimento aggiornata a: " + (isCustom ? "§eCustom Floor" : "§eBuild Floor"));
+        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, 2f);
+
+        int buildId = plugin.getGameManager().getCurrentBuild(player);
+        if (buildId != -1) {
+            plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
         }
     }
 

@@ -145,7 +145,6 @@ public class Commands implements CommandExecutor {
                 player.sendMessage("§e/map load <id> <categoria> §7- Carica una build.");
                 player.sendMessage("§e/map list §7- Mostra tutte le build salvate.");
                 player.sendMessage("§e/map delete <id> §7- Elimina una build.");
-                player.sendMessage("§e/map setfloornpc §7- Genera l'NPC per lo stile pavimento.");
                 player.sendMessage("§8§m--------------------------------");
                 return true;
             }
@@ -254,16 +253,6 @@ public class Commands implements CommandExecutor {
                     plugin.saveConfig();
                     plugin.getHologramManager().spawnOrUpdate();
                     player.sendMessage("§aOlogramma della Top 10 posizionato in aria!");
-                    break;
-                case "setfloornpc":
-                    if (!player.isOp()) return true;
-                    org.bukkit.entity.Villager npcFloor = (org.bukkit.entity.Villager) player.getWorld().spawnEntity(player.getLocation(), org.bukkit.entity.EntityType.VILLAGER);
-                    npcFloor.setCustomName("§e§lBuild Floor");
-                    npcFloor.setCustomNameVisible(true);
-                    npcFloor.setAI(false);
-                    npcFloor.setInvulnerable(true);
-                    npcFloor.setCollidable(false);
-                    player.sendMessage("§aNPC stile pavimento creato alla tua posizione!");
                     break;
                 case "setexit":
                     if (!player.isOp()) return true;
