@@ -362,9 +362,9 @@ public class Listeners implements Listener {
             }
             else if (itemName.contains("Custom Build")) {
                 if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-                    plugin.getGameManager().saveBuild(player, 999999, "Build Temporanea", "FearGames");
+                    plugin.getGameManager().saveBuild(player, 999999, "Build Temporanea", "Custom");
                     player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                    plugin.getGameManager().loadBuild(player, 999999, "FearGames");
+                    plugin.getGameManager().loadBuild(player, 999999, "Custom");
                     player.sendMessage("§aBuild temporanea pronta!");
                 } else {
                     plugin.getGameManager().forceReset(player);
@@ -398,6 +398,13 @@ public class Listeners implements Listener {
                 String[] split = title.split("- P. ");
                 if (split.length > 1) currentPage = Integer.parseInt(split[1].trim());
             } catch (Exception ignored) {}
+
+            // Gestione del Tasto Indietro
+            if (name.equals("§c§lTorna ai Server")) {
+                player.closeInventory();
+                gm.openCategoryMenu(player);
+                return;
+            }
 
             // Gestione del Tasto Cerca (Reset con tasto destro)
             if (event.getCurrentItem().getType() == Material.NAME_TAG && name.equals("§e§lCerca Build")) {

@@ -525,43 +525,71 @@ public class GameManager {
     public void openCategoryMenu(Player player) {
         org.bukkit.configuration.ConfigurationSection section = plugin.getConfig().getConfigurationSection("custom_categories");
 
-        // 1. Unisce tutte le categorie (Base + Custom) in un'unica lista
         java.util.List<String> allServers = new java.util.ArrayList<>();
         allServers.add("FearGames");
         allServers.add("Mineplex");
 
         if (section != null) {
-            allServers.addAll(section.getKeys(false));
+            for (String key : section.getKeys(false)) {
+                // Esclude Custom dalla lista normale e impedisce i doppioni
+                if (!key.equalsIgnoreCase("FearGames") && !key.equalsIgnoreCase("Mineplex") && !key.equalsIgnoreCase("Custom")) {
+                    allServers.add(key);
+                }
+            }
         }
 
-        // 2. Ordina l'intera lista alfabeticamente
         allServers.sort(String.CASE_INSENSITIVE_ORDER);
 
-        // Calcola la grandezza del menu (fino a 54 slot se hai tanti server)
-        int size = allServers.size() > 14 ? 54 : (allServers.size() > 7 ? 45 : 36);
-        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, size, "§8Seleziona Server");
+        // GUI da 54 slot per fare spazio alla categoria Custom isolata
+        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 54, "§8Seleziona Server");
 
-        // Slot sicuri in cui posizionare i server (esclude i bordi laterali per fare spazio al vetro)
-        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+        // --- 1. IL TRONO: CATEGORIA "CUSTOM" (Slot 4 - Al centro in alto) ---
+        String customName = section != null ? section.getString("Custom.name", "Custom") : "Custom";
+        String customIp = section != null ? section.getString("Custom.ip", "Locale") : "Locale";
+        String customIcon = section != null ? section.getString("Custom.icon", "COMMAND;0") : "COMMAND;0";
+
+        Material cMat = Material.COMMAND;
+        short cData = 0;
+        try {
+            String[] parts = customIcon.split(";");
+            cMat = Material.valueOf(parts[0]);
+            cData = Short.parseShort(parts[1]);
+        } catch (Exception ignored) {}
+
+        ItemStack customItem = new ItemStack(cMat, 1, cData);
+        org.bukkit.inventory.meta.ItemMeta customMeta = customItem.getItemMeta();
+        customMeta.setDisplayName("§e§l" + customName);
+
+        org.bukkit.configuration.file.FileConfiguration cfgCustom = getBuildConfig("Custom");
+        int customBuildCount = cfgCustom.contains("builds") ? cfgCustom.getConfigurationSection("builds").getKeys(false).size() : 0;
+
+        customMeta.setLore(java.util.Arrays.asList(
+                "§7IP: §f" + customIp,
+                "§7Mappe totali: §e" + customBuildCount,
+                "",
+                "§7Clicca per sfogliare le",
+                "§7build originali di " + customName + "."
+        ));
+        customItem.setItemMeta(customMeta);
+        inv.setItem(4, customItem);
+
+        // --- 2. GLI ALTRI SERVER (A partire dalla riga 3) ---
+        int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
         int slotIndex = 0;
 
-        // 3. Genera le icone per TUTTI i server in modo dinamico
         for (String serverKey : allServers) {
-
-            // Valori di base (nel caso in cui non li hai ancora modificati col comando)
             String defaultName = serverKey;
             String defaultIp = "Sconosciuto";
-            String defaultIcon = "STAINED_CLAY;3"; // Azzurro di default
+            String defaultIcon = "STAINED_CLAY;3";
 
             if (serverKey.equalsIgnoreCase("FearGames")) {
                 defaultIp = "mc.feargames.eu";
-                defaultIcon = "STAINED_CLAY;14"; // Rosso
+                defaultIcon = "STAINED_CLAY;14";
             } else if (serverKey.equalsIgnoreCase("Mineplex")) {
                 defaultIp = "play.mineplex.com";
-                defaultIcon = "STAINED_CLAY;5"; // Verde
+                defaultIcon = "STAINED_CLAY;5";
             }
 
-            // Legge dal config (se hai fatto /category seticon, prenderà il tuo salvataggio, altrimenti usa il default)
             String name = section != null ? section.getString(serverKey + ".name", defaultName) : defaultName;
             String ip = section != null ? section.getString(serverKey + ".ip", defaultIp) : defaultIp;
             String iconStr = section != null ? section.getString(serverKey + ".icon", defaultIcon) : defaultIcon;
@@ -576,16 +604,23 @@ public class GameManager {
 
             ItemStack item = new ItemStack(mat, 1, data);
             org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
-            meta.setDisplayName("§b§l" + name);
 
-            // Seleziona il colore giusto per il nome in base a FearGames (Rosso), Mineplex (Verde) o Custom (Azzurro)
             if (serverKey.equalsIgnoreCase("FearGames")) meta.setDisplayName("§c§l" + name);
-            if (serverKey.equalsIgnoreCase("Mineplex")) meta.setDisplayName("§a§l" + name);
+            else if (serverKey.equalsIgnoreCase("Mineplex")) meta.setDisplayName("§a§l" + name);
+            else meta.setDisplayName("§b§l" + name);
 
-            meta.setLore(java.util.Arrays.asList("§7IP: §f" + ip, "", "§7Clicca per sfogliare le", "§7build originali di " + name + "."));
+            org.bukkit.configuration.file.FileConfiguration cfg = getBuildConfig(serverKey);
+            int buildCount = cfg.contains("builds") ? cfg.getConfigurationSection("builds").getKeys(false).size() : 0;
+
+            meta.setLore(java.util.Arrays.asList(
+                    "§7IP: §f" + ip,
+                    "§7Mappe totali: §e" + buildCount,
+                    "",
+                    "§7Clicca per sfogliare le",
+                    "§7build originali di " + name + "."
+            ));
             item.setItemMeta(meta);
 
-            // Posiziona l'item nel primo slot centrale libero
             if (slotIndex < slots.length) {
                 inv.setItem(slots[slotIndex], item);
                 slotIndex++;
@@ -594,17 +629,24 @@ public class GameManager {
             }
         }
 
-        // 4. Contorno decorativo in vetro nero
+        // --- 3. CONTORNO IN VETRO NERO (SOLO BORDI E PRIME DUE RIGHE) ---
         ItemStack filler = new ItemStack(Material.STAINED_GLASS_PANE, 1, (byte) 15);
         org.bukkit.inventory.meta.ItemMeta fillerMeta = filler.getItemMeta();
-        fillerMeta.setDisplayName(" "); // Nome vuoto per non mostrare nulla passandoci sopra
+        fillerMeta.setDisplayName(" ");
         filler.setItemMeta(fillerMeta);
 
-        // Riempie ogni spazio rimasto vuoto (tutto il contorno + gli spazi non usati)
-        for (int i = 0; i < inv.getSize(); i++) {
-            if (inv.getItem(i) == null || inv.getItem(i).getType() == Material.AIR) {
-                inv.setItem(i, filler);
-            }
+        // Specifica esattamente in quali slot mettere il vetro nero per creare la cornice
+        int[] borderSlots = {
+                0, 1, 2, 3, /* Il 4 è lasciato libero per la categoria Custom */ 5, 6, 7, 8,
+                9, 10, 11, 12, 13, 14, 15, 16, 17,
+                18, 26,
+                27, 35,
+                36, 44,
+                45, 46, 47, 48, 49, 50, 51, 52, 53
+        };
+
+        for (int i : borderSlots) {
+            inv.setItem(i, filler);
         }
 
         player.openInventory(inv);
@@ -684,6 +726,14 @@ public class GameManager {
             next.setItemMeta(meta);
             inv.setItem(53, next);
         }
+
+        // Tasto per tornare alla lista dei Server (Slot 48, a sinistra del tasto Cerca)
+        ItemStack backBtn = new ItemStack(Material.DARK_OAK_DOOR_ITEM);
+        org.bukkit.inventory.meta.ItemMeta backMeta = backBtn.getItemMeta();
+        backMeta.setDisplayName("§c§lTorna ai Server");
+        backMeta.setLore(java.util.Arrays.asList("§7Clicca per tornare alla", "§7selezione del server."));
+        backBtn.setItemMeta(backMeta);
+        inv.setItem(48, backBtn);
 
         ItemStack searchBtn = new ItemStack(Material.NAME_TAG);
         org.bukkit.inventory.meta.ItemMeta searchMeta = searchBtn.getItemMeta();
@@ -1078,40 +1128,49 @@ public class GameManager {
     }
 
     public void openSettingsMenu(Player player) {
-        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 9, "§8Gestione Arena");
+        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 27, "§8Gestione Arena");
 
-        // 1. GameMode Toggle
         ItemStack gm = new ItemStack(Material.DIAMOND_PICKAXE);
         org.bukkit.inventory.meta.ItemMeta gmMeta = gm.getItemMeta();
         gmMeta.setDisplayName("§b§lCambia Modalità");
         gmMeta.setLore(java.util.Arrays.asList("§7Passa da Creativa a Sopravvivenza", "§7e viceversa."));
         gm.setItemMeta(gmMeta);
 
-        // 2. Custom Floor (Editor)
         ItemStack cFloor = new ItemStack(Material.GRASS);
         org.bukkit.inventory.meta.ItemMeta cFloorMeta = cFloor.getItemMeta();
         cFloorMeta.setDisplayName("§a§lCustom Floor");
         cFloorMeta.setLore(java.util.Arrays.asList("§7Modifica e salva in modo permanente", "§7il pavimento della tua arena."));
         cFloor.setItemMeta(cFloorMeta);
 
-        // 3. Reset Floor (Base)
         ItemStack rFloor = new ItemStack(Material.STAINED_GLASS, 1, (byte) 14);
         org.bukkit.inventory.meta.ItemMeta rFloorMeta = rFloor.getItemMeta();
         rFloorMeta.setDisplayName("§c§lRipristina Pavimento");
         rFloorMeta.setLore(java.util.Arrays.asList("§7Cancella il pavimento custom e", "§7torna a quello originale."));
         rFloor.setItemMeta(rFloorMeta);
 
-        // 4. Custom Build
         ItemStack cBuild = new ItemStack(Material.BRICK);
         org.bukkit.inventory.meta.ItemMeta cBuildMeta = cBuild.getItemMeta();
         cBuildMeta.setDisplayName("§e§lCustom Build");
         cBuildMeta.setLore(java.util.Arrays.asList("§7Costruisci e testa una", "§7build temporanea."));
         cBuild.setItemMeta(cBuildMeta);
 
-        inv.setItem(1, gm);
-        inv.setItem(3, cFloor);
-        inv.setItem(4, rFloor);
-        inv.setItem(6, cBuild);
+        // Posizionati al centro
+        inv.setItem(10, gm);
+        inv.setItem(12, cFloor);
+        inv.setItem(14, rFloor);
+        inv.setItem(16, cBuild);
+
+        // Vetro nero di contorno
+        ItemStack filler = new ItemStack(Material.STAINED_GLASS_PANE, 1, (byte) 15);
+        org.bukkit.inventory.meta.ItemMeta fillerMeta = filler.getItemMeta();
+        fillerMeta.setDisplayName(" ");
+        filler.setItemMeta(fillerMeta);
+
+        for (int i = 0; i < inv.getSize(); i++) {
+            if (inv.getItem(i) == null || inv.getItem(i).getType() == Material.AIR) {
+                inv.setItem(i, filler);
+            }
+        }
 
         player.openInventory(inv);
     }
