@@ -145,27 +145,54 @@ public class Commands implements CommandExecutor {
                 player.sendMessage("§cNon hai i permessi.");
                 return true;
             }
-            if (args.length < 3 || !args[0].equalsIgnoreCase("create")) {
+            if (args.length == 0) {
                 player.sendMessage("§cUsa: /category create <IP> <Nome Server>");
+                player.sendMessage("§cUsa: /category seticon <Nome Server> §7(con l'oggetto in mano)");
                 return true;
             }
 
-            String ip = args[1];
+            if (args[0].equalsIgnoreCase("create") && args.length >= 3) {
+                String ip = args[1];
+                StringBuilder nameBuilder = new StringBuilder();
+                for (int i = 2; i < args.length; i++) nameBuilder.append(args[i]).append(" ");
+                String name = nameBuilder.toString().trim();
 
-            // Unisce le parole successive per il nome (es. "Koks Craft" o "TeslaCraft")
-            StringBuilder nameBuilder = new StringBuilder();
-            for (int i = 2; i < args.length; i++) nameBuilder.append(args[i]).append(" ");
-            String name = nameBuilder.toString().trim();
+                plugin.getConfig().set("custom_categories." + name + ".ip", ip);
+                plugin.getConfig().set("custom_categories." + name + ".name", name);
+                plugin.getConfig().set("custom_categories." + name + ".icon", "STAINED_CLAY;3"); // Azzurro di default
+                plugin.saveConfig();
 
-            // Salva IP e Nome nel config sotto forma di chiave-valore
-            plugin.getConfig().set("custom_categories." + name + ".ip", ip);
-            plugin.getConfig().set("custom_categories." + name + ".name", name);
-            plugin.saveConfig();
+                plugin.getGameManager().getBuildConfig(name);
+                player.sendMessage("§aCategoria §l" + name + " §acreata! IP: §f" + ip);
+            }
+            else if (args[0].equalsIgnoreCase("seticon") && args.length >= 2) {
+                StringBuilder nameBuilder = new StringBuilder();
+                for (int i = 1; i < args.length; i++) nameBuilder.append(args[i]).append(" ");
+                String name = nameBuilder.toString().trim();
 
-            // Crea fisicamente il file .yml della mappa
-            gm.getBuildConfig(name);
+                // Consente di modificare FearGames, Mineplex o qualsiasi server custom
+                if (!name.equalsIgnoreCase("FearGames") && !name.equalsIgnoreCase("Mineplex") && !plugin.getConfig().contains("custom_categories." + name)) {
+                    player.sendMessage("§cLa categoria '" + name + "' non esiste!");
+                    return true;
+                }
 
-            player.sendMessage("§aCategoria §l" + name + " §acreata con successo! IP impostato su: §f" + ip);
+                @SuppressWarnings("deprecation")
+                org.bukkit.inventory.ItemStack inHand = player.getItemInHand();
+                if (inHand == null || inHand.getType() == org.bukkit.Material.AIR) {
+                    player.sendMessage("§cDevi avere un blocco o oggetto in mano per impostare l'icona!");
+                    return true;
+                }
+
+                String iconData = inHand.getType().name() + ";" + inHand.getDurability();
+                plugin.getConfig().set("custom_categories." + name + ".icon", iconData);
+
+                // Salva il nome anche se stiamo modificando quelli base per la prima volta
+                plugin.getConfig().set("custom_categories." + name + ".name", name);
+                plugin.saveConfig();
+                player.sendMessage("§aIcona di §l" + name + " §aaggiornata con successo!");
+            } else {
+                player.sendMessage("§cUsa: /category create <IP> <Nome> oppure /category seticon <Nome>");
+            }
             return true;
         }
 

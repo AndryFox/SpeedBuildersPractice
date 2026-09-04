@@ -524,39 +524,86 @@ public class GameManager {
 
     public void openCategoryMenu(Player player) {
         org.bukkit.configuration.ConfigurationSection section = plugin.getConfig().getConfigurationSection("custom_categories");
-        int customSize = section != null ? section.getKeys(false).size() : 0;
-        int size = customSize > 5 ? 36 : 27;
 
+        // 1. Unisce tutte le categorie (Base + Custom) in un'unica lista
+        java.util.List<String> allServers = new java.util.ArrayList<>();
+        allServers.add("FearGames");
+        allServers.add("Mineplex");
+
+        if (section != null) {
+            allServers.addAll(section.getKeys(false));
+        }
+
+        // 2. Ordina l'intera lista alfabeticamente
+        allServers.sort(String.CASE_INSENSITIVE_ORDER);
+
+        // Calcola la grandezza del menu (fino a 54 slot se hai tanti server)
+        int size = allServers.size() > 14 ? 54 : (allServers.size() > 7 ? 45 : 36);
         org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, size, "§8Seleziona Server");
 
-        // 1. Categorie di Base
-        ItemStack fear = new ItemStack(Material.STAINED_CLAY, 1, (byte) 14);
-        org.bukkit.inventory.meta.ItemMeta fearMeta = fear.getItemMeta();
-        fearMeta.setDisplayName("§c§lFearGames");
-        fearMeta.setLore(java.util.Arrays.asList("§7IP: §fmc.feargames.eu", "", "§7Clicca per sfogliare le", "§7build originali di FearGames."));
-        fear.setItemMeta(fearMeta);
-        inv.setItem(11, fear);
+        // Slot sicuri in cui posizionare i server (esclude i bordi laterali per fare spazio al vetro)
+        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+        int slotIndex = 0;
 
-        ItemStack mineplex = new ItemStack(Material.STAINED_CLAY, 1, (byte) 5);
-        org.bukkit.inventory.meta.ItemMeta mineplexMeta = mineplex.getItemMeta();
-        mineplexMeta.setDisplayName("§a§lMineplex");
-        mineplexMeta.setLore(java.util.Arrays.asList("§7IP: §fplay.mineplex.com", "", "§7Clicca per sfogliare le", "§7build originali di Mineplex."));
-        mineplex.setItemMeta(mineplexMeta);
-        inv.setItem(15, mineplex);
+        // 3. Genera le icone per TUTTI i server in modo dinamico
+        for (String serverKey : allServers) {
 
-        // 2. Categorie Custom
-        int slot = 18;
-        if (section != null) {
-            for (String key : section.getKeys(false)) {
-                String name = section.getString(key + ".name", key);
-                String ip = section.getString(key + ".ip", "Sconosciuto");
+            // Valori di base (nel caso in cui non li hai ancora modificati col comando)
+            String defaultName = serverKey;
+            String defaultIp = "Sconosciuto";
+            String defaultIcon = "STAINED_CLAY;3"; // Azzurro di default
 
-                ItemStack cItem = new ItemStack(Material.STAINED_CLAY, 1, (byte) 3); // Azzurro
-                org.bukkit.inventory.meta.ItemMeta cMeta = cItem.getItemMeta();
-                cMeta.setDisplayName("§b§l" + name);
-                cMeta.setLore(java.util.Arrays.asList("§7IP: §f" + ip, "", "§7Clicca per sfogliare le", "§7build originali di " + name + "."));
-                cItem.setItemMeta(cMeta);
-                inv.setItem(slot++, cItem);
+            if (serverKey.equalsIgnoreCase("FearGames")) {
+                defaultIp = "mc.feargames.eu";
+                defaultIcon = "STAINED_CLAY;14"; // Rosso
+            } else if (serverKey.equalsIgnoreCase("Mineplex")) {
+                defaultIp = "play.mineplex.com";
+                defaultIcon = "STAINED_CLAY;5"; // Verde
+            }
+
+            // Legge dal config (se hai fatto /category seticon, prenderà il tuo salvataggio, altrimenti usa il default)
+            String name = section != null ? section.getString(serverKey + ".name", defaultName) : defaultName;
+            String ip = section != null ? section.getString(serverKey + ".ip", defaultIp) : defaultIp;
+            String iconStr = section != null ? section.getString(serverKey + ".icon", defaultIcon) : defaultIcon;
+
+            Material mat = Material.STAINED_CLAY;
+            short data = 3;
+            try {
+                String[] parts = iconStr.split(";");
+                mat = Material.valueOf(parts[0]);
+                data = Short.parseShort(parts[1]);
+            } catch (Exception ignored) {}
+
+            ItemStack item = new ItemStack(mat, 1, data);
+            org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+            meta.setDisplayName("§b§l" + name);
+
+            // Seleziona il colore giusto per il nome in base a FearGames (Rosso), Mineplex (Verde) o Custom (Azzurro)
+            if (serverKey.equalsIgnoreCase("FearGames")) meta.setDisplayName("§c§l" + name);
+            if (serverKey.equalsIgnoreCase("Mineplex")) meta.setDisplayName("§a§l" + name);
+
+            meta.setLore(java.util.Arrays.asList("§7IP: §f" + ip, "", "§7Clicca per sfogliare le", "§7build originali di " + name + "."));
+            item.setItemMeta(meta);
+
+            // Posiziona l'item nel primo slot centrale libero
+            if (slotIndex < slots.length) {
+                inv.setItem(slots[slotIndex], item);
+                slotIndex++;
+            } else {
+                inv.addItem(item);
+            }
+        }
+
+        // 4. Contorno decorativo in vetro nero
+        ItemStack filler = new ItemStack(Material.STAINED_GLASS_PANE, 1, (byte) 15);
+        org.bukkit.inventory.meta.ItemMeta fillerMeta = filler.getItemMeta();
+        fillerMeta.setDisplayName(" "); // Nome vuoto per non mostrare nulla passandoci sopra
+        filler.setItemMeta(fillerMeta);
+
+        // Riempie ogni spazio rimasto vuoto (tutto il contorno + gli spazi non usati)
+        for (int i = 0; i < inv.getSize(); i++) {
+            if (inv.getItem(i) == null || inv.getItem(i).getType() == Material.AIR) {
+                inv.setItem(i, filler);
             }
         }
 
