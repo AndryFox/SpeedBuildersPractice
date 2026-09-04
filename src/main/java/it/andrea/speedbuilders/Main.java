@@ -96,6 +96,7 @@ public class Main extends JavaPlugin {
         getCommand("lobby").setExecutor(cmds);
         getCommand("fly").setExecutor(cmds);
         getCommand("dj").setExecutor(cmds);
+        getCommand("category").setExecutor(cmds);
 
         // Comando per salvare le build di Mineplex
         getCommand("savemineplex").setExecutor(new SaveMineplexCommand(this));

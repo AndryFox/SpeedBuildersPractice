@@ -35,9 +35,11 @@ public class GameManager {
     private final HashMap<Player, String> activeSearch = new HashMap<>();
     private final HashMap<Player, String> currentCategory = new HashMap<>();
     private final HashMap<Player, Boolean> continuousRandom = new HashMap<>();
-    private final HashMap<Player, List<String>> temporaryFloors = new HashMap<>();
+    private final HashMap<Player, Boolean> awaitingCategory = new HashMap<>();
+    private final HashMap<String, FileConfiguration> dynamicConfigs = new HashMap<>();
 
-    public void clearTemporaryFloor(Player p) { temporaryFloors.remove(p); }
+    public void setAwaitingCategory(Player p, boolean val) { if (val) awaitingCategory.put(p, true); else awaitingCategory.remove(p); }
+    public boolean isAwaitingCategory(Player p) { return awaitingCategory.containsKey(p); }
     public void setAwaitingSearch(Player p, boolean val) { if (val) awaitingSearch.put(p, true); else awaitingSearch.remove(p); }
     public boolean isAwaitingSearch(Player p) { return awaitingSearch.containsKey(p); }
     public void setActiveSearch(Player p, String search) { activeSearch.put(p, search); }
@@ -50,48 +52,6 @@ public class GameManager {
 
     public GameManager(Main plugin) {
         this.plugin = plugin;
-    }
-
-    public int getRandomBuildId(String category) {
-        FileConfiguration config = getBuildConfig(category);
-        if (config.contains("builds")) {
-            List<String> keys = new java.util.ArrayList<>(config.getConfigurationSection("builds").getKeys(false));
-            if (!keys.isEmpty()) {
-                String randomKey = keys.get(new java.util.Random().nextInt(keys.size()));
-                try { return Integer.parseInt(randomKey); } catch (Exception ignored) {}
-            }
-        }
-        return -1;
-    }
-
-    public void saveAndApplyCustomFloor(Player player) {
-        World w = player.getWorld();
-        List<String> currentCustom = temporaryFloors.getOrDefault(player, new ArrayList<>());
-
-        boolean foundAny = false;
-        // Scansiona i blocchi che il giocatore ha piazzato in superficie (Y=101)
-        for (int x = -3; x <= 3; x++) {
-            for (int z = -3; z <= 3; z++) {
-                Block b101 = w.getBlockAt(x, 101, z);
-                if (b101.getType() != Material.AIR) {
-                    // Li salva in memoria e li spinge giù
-                    currentCustom.add(x + ";" + z + ";" + b101.getType().name() + ";" + b101.getData());
-                    Block b100 = w.getBlockAt(x, 100, z);
-                    b100.setType(b101.getType());
-                    b100.setData(b101.getData());
-                    b101.setType(Material.AIR);
-                    foundAny = true;
-                }
-            }
-        }
-
-        if (foundAny) {
-            temporaryFloors.put(player, currentCustom);
-            player.sendMessage("§aModifiche al pavimento applicate e salvate per la sessione attuale!");
-            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
-        } else {
-            player.sendMessage("§cNon hai piazzato nessun blocco a livello terra (sopra il pavimento) da salvare!");
-        }
     }
 
     public String getState(Player player) { return playerStates.getOrDefault(player, "IDLE"); }
@@ -123,6 +83,18 @@ public class GameManager {
         playerStates.put(player, "IDLE");
         continuousRandom.remove(player); // <- Aggiunto questo
         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
+    }
+
+    public int getRandomBuildId(String category) {
+        FileConfiguration config = getBuildConfig(category);
+        if (config.contains("builds")) {
+            List<String> keys = new java.util.ArrayList<>(config.getConfigurationSection("builds").getKeys(false));
+            if (!keys.isEmpty()) {
+                String randomKey = keys.get(new java.util.Random().nextInt(keys.size()));
+                try { return Integer.parseInt(randomKey); } catch (Exception ignored) {}
+            }
+        }
+        return -1;
     }
 
     @SuppressWarnings("deprecation")
@@ -183,70 +155,105 @@ public class GameManager {
         player.sendMessage("§bNuova isola di allenamento generata con successo!");
     }
 
+    public void saveAndApplyCustomFloor(Player player) {
+        World w = player.getWorld();
+        java.util.List<String> floorBlocks = new java.util.ArrayList<>();
+
+        // Attiva in modo permanente la modalità Custom Floor per il giocatore
+        plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", true);
+
+        for (int x = -3; x <= 3; x++) {
+            for (int z = -3; z <= 3; z++) {
+                Block b101 = w.getBlockAt(x, 101, z);
+                Block b100 = w.getBlockAt(x, 100, z);
+
+                if (b101.getType() != Material.AIR) {
+                    // Salva il blocco piazzato e lo spinge giù
+                    floorBlocks.add(x + ";" + z + ";" + b101.getType().name() + ";" + b101.getData());
+                    b100.setType(b101.getType());
+                    b100.setData(b101.getData());
+                    b101.setType(Material.AIR);
+                } else {
+                    // Se a Y=101 non hai messo nulla, resetta quel punto a erba pura
+                    floorBlocks.add(x + ";" + z + ";GRASS;0");
+                    b100.setType(Material.GRASS);
+                }
+            }
+        }
+
+        plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor_data", floorBlocks);
+        plugin.saveConfig();
+        player.sendMessage("§aPavimento Custom aggiornato! Rimarrà così per tutte le build.");
+        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+    }
+
     @SuppressWarnings("deprecation")
     public void generateFloor(Player player, int buildId, String category) {
         World world = player.getWorld();
         FileConfiguration config = getBuildConfig(category);
         List<String> blocksData = config.getStringList("builds." + buildId + ".blocks");
 
-        // 1. Genera il pavimento base (Vetro per Fear, Terra/Legno per Mineplex)
-        for (int x = -3; x <= 3; x++) {
-            for (int z = -3; z <= 3; z++) {
-                Block floorBlock = world.getBlockAt(x, 100, z);
+        boolean useCustom = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".use_custom_floor", false);
 
-                if (category.equals("FearGames")) {
-                    boolean found = false;
-                    for (String dataString : blocksData) {
-                        String[] parts = dataString.split(";");
-                        if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 0 && Integer.parseInt(parts[2]) == z) {
-                            floorBlock.setType(Material.valueOf(parts[3]));
-                            floorBlock.setData(Byte.parseByte(parts[4]));
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        floorBlock.setType(Material.STAINED_GLASS);
-                        floorBlock.setData((byte) 15);
-                    }
-                } else if (category.equals("Mineplex")) {
-                    boolean found = false;
-                    for (String dataString : blocksData) {
-                        String[] parts = dataString.split(";");
-                        if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 1 && Integer.parseInt(parts[2]) == z) {
-                            Material m = Material.valueOf(parts[3]);
-                            if (!m.isSolid() || m.name().contains("FENCE") || m.name().contains("DOOR") || m.name().contains("SKULL") || m.name().contains("STEP")) {
-                                floorBlock.setType(Material.DIRT);
-                            } else {
-                                floorBlock.setType(m);
-                                floorBlock.setData(Byte.parseByte(parts[4]));
-                            }
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        floorBlock.setType(Material.WOOD);
-                        floorBlock.setData((byte) 1);
-                    }
-                }
-            }
-        }
-
-        // 2. Applica le TUE modifiche temporanee del Custom Floor sopra la base
-        if (temporaryFloors.containsKey(player)) {
-            for (String data : temporaryFloors.get(player)) {
+        if (useCustom && plugin.getConfig().contains("players." + player.getUniqueId() + ".custom_floor_data")) {
+            // Modalità Custom Floor: Piazzo ESATTAMENTE quello che ha salvato, zero intromissioni.
+            List<String> customData = plugin.getConfig().getStringList("players." + player.getUniqueId() + ".custom_floor_data");
+            for (String data : customData) {
                 String[] parts = data.split(";");
                 if (parts.length == 4) {
                     world.getBlockAt(Integer.parseInt(parts[0]), 100, Integer.parseInt(parts[1]))
                             .setTypeIdAndData(Material.valueOf(parts[2]).getId(), Byte.parseByte(parts[3]), false);
                 }
             }
+        } else {
+            // Modalità Pavimento Normale
+            for (int x = -3; x <= 3; x++) {
+                for (int z = -3; z <= 3; z++) {
+                    Block floorBlock = world.getBlockAt(x, 100, z);
+
+                    if (category.equals("FearGames")) {
+                        boolean found = false;
+                        for (String dataString : blocksData) {
+                            String[] parts = dataString.split(";");
+                            if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 0 && Integer.parseInt(parts[2]) == z) {
+                                floorBlock.setType(Material.valueOf(parts[3]));
+                                floorBlock.setData(Byte.parseByte(parts[4]));
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            floorBlock.setType(Material.STAINED_GLASS);
+                            floorBlock.setData((byte) 15);
+                        }
+                    } else if (category.equals("Mineplex")) {
+                        boolean found = false;
+                        for (String dataString : blocksData) {
+                            String[] parts = dataString.split(";");
+                            if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 1 && Integer.parseInt(parts[2]) == z) {
+                                Material m = Material.valueOf(parts[3]);
+                                if (!m.isSolid() || m.name().contains("FENCE") || m.name().contains("DOOR") || m.name().contains("SKULL") || m.name().contains("STEP")) {
+                                    floorBlock.setType(Material.DIRT);
+                                } else {
+                                    floorBlock.setType(m);
+                                    floorBlock.setData(Byte.parseByte(parts[4]));
+                                }
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            floorBlock.setType(Material.WOOD);
+                            floorBlock.setData((byte) 1);
+                        }
+                    }
+                }
+            }
         }
     }
 
     @SuppressWarnings("deprecation")
-    public void saveBuild(Player player, int id, String buildName) {
+    public void saveBuild(Player player, int id, String buildName, String category) {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
 
@@ -272,26 +279,21 @@ public class GameManager {
             }
         }
 
-        FileConfiguration config = plugin.getFearConfig();
+        FileConfiguration config = getBuildConfig(category);
         config.set("builds." + id + ".name", buildName);
         config.set("builds." + id + ".blocks", blocksData);
         config.set("builds." + id + ".hotbar", hotbar);
         try {
-            config.save(new java.io.File(plugin.getDataFolder(), "feargames_builds.yml"));
+            config.save(new java.io.File(plugin.getDataFolder(), category.toLowerCase() + "_builds.yml"));
         } catch (Exception e) { e.printStackTrace(); }
 
-        player.sendMessage("§aBuild '" + buildName + "' salvata con il tuo ordine dell'inventario (ID: " + id + ")!");
+        player.sendMessage("§aBuild '" + buildName + "' salvata in " + category + " (ID: " + id + ")!");
     }
 
     @SuppressWarnings("deprecation")
     public void loadBuild(Player player, int id, String category) {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
-
-        // Se l'id della build che sta caricando è diverso da quello precedente, pulisci il pavimento custom
-        if (currentBuild.getOrDefault(player, -1) != id) {
-            clearTemporaryFloor(player);
-        }
 
         currentCategory.put(player, category);
         FileConfiguration config = getBuildConfig(category);
@@ -304,7 +306,6 @@ public class GameManager {
         clearPlot(world);
         generateFloor(player, id, category);
 
-        // Estrae il tipo di teschio corretto dalla configurazione della hotbar
         List<String> hotbar = config.getStringList("builds." + id + ".hotbar");
         byte expectedSkullType = 0;
         if (hotbar != null) {
@@ -359,7 +360,6 @@ public class GameManager {
                     Block block = world.getBlockAt(x, 100 + y, z);
                     block.setType(material); block.setData(data);
 
-                    // Applica visivamente il teschio Wither se richiesto
                     if (material == Material.SKULL && expectedSkullType >= 0 && expectedSkullType < org.bukkit.SkullType.values().length) {
                         org.bukkit.block.Skull skull = (org.bukkit.block.Skull) block.getState();
                         skull.setSkullType(org.bukkit.SkullType.values()[expectedSkullType]);
@@ -505,26 +505,60 @@ public class GameManager {
     }
 
     public FileConfiguration getBuildConfig(String category) {
-        return (category != null && category.equals("Mineplex")) ? plugin.getMineplexConfig() : plugin.getFearConfig();
+        if (category == null) return plugin.getFearConfig();
+        if (category.equalsIgnoreCase("Mineplex")) return plugin.getMineplexConfig();
+        if (category.equalsIgnoreCase("FearGames")) return plugin.getFearConfig();
+
+        // Se la categoria custom è già in memoria, usa quella
+        if (dynamicConfigs.containsKey(category)) return dynamicConfigs.get(category);
+
+        // Altrimenti, crea un nuovo file (es. mushmc_builds.yml)
+        java.io.File file = new java.io.File(plugin.getDataFolder(), category.toLowerCase() + "_builds.yml");
+        if (!file.exists()) {
+            try { file.createNewFile(); } catch (Exception ignored) {}
+        }
+        FileConfiguration cfg = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(file);
+        dynamicConfigs.put(category, cfg);
+        return cfg;
     }
 
     public void openCategoryMenu(Player player) {
-        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 27, "§8Seleziona Server");
+        org.bukkit.configuration.ConfigurationSection section = plugin.getConfig().getConfigurationSection("custom_categories");
+        int customSize = section != null ? section.getKeys(false).size() : 0;
+        int size = customSize > 5 ? 36 : 27;
 
+        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, size, "§8Seleziona Server");
+
+        // 1. Categorie di Base
         ItemStack fear = new ItemStack(Material.STAINED_CLAY, 1, (byte) 14);
         org.bukkit.inventory.meta.ItemMeta fearMeta = fear.getItemMeta();
-        fearMeta.setDisplayName("§c§lmc.feargames.eu");
-        fearMeta.setLore(java.util.Arrays.asList("§7Clicca per sfogliare le", "§7build originali di FearGames."));
+        fearMeta.setDisplayName("§c§lFearGames");
+        fearMeta.setLore(java.util.Arrays.asList("§7IP: §fmc.feargames.eu", "", "§7Clicca per sfogliare le", "§7build originali di FearGames."));
         fear.setItemMeta(fearMeta);
+        inv.setItem(11, fear);
 
         ItemStack mineplex = new ItemStack(Material.STAINED_CLAY, 1, (byte) 5);
         org.bukkit.inventory.meta.ItemMeta mineplexMeta = mineplex.getItemMeta();
-        mineplexMeta.setDisplayName("§a§lplay.mineplex.com");
-        mineplexMeta.setLore(java.util.Arrays.asList("§7Clicca per sfogliare le", "§7build originali di Mineplex."));
+        mineplexMeta.setDisplayName("§a§lMineplex");
+        mineplexMeta.setLore(java.util.Arrays.asList("§7IP: §fplay.mineplex.com", "", "§7Clicca per sfogliare le", "§7build originali di Mineplex."));
         mineplex.setItemMeta(mineplexMeta);
-
-        inv.setItem(11, fear);
         inv.setItem(15, mineplex);
+
+        // 2. Categorie Custom
+        int slot = 18;
+        if (section != null) {
+            for (String key : section.getKeys(false)) {
+                String name = section.getString(key + ".name", key);
+                String ip = section.getString(key + ".ip", "Sconosciuto");
+
+                ItemStack cItem = new ItemStack(Material.STAINED_CLAY, 1, (byte) 3); // Azzurro
+                org.bukkit.inventory.meta.ItemMeta cMeta = cItem.getItemMeta();
+                cMeta.setDisplayName("§b§l" + name);
+                cMeta.setLore(java.util.Arrays.asList("§7IP: §f" + ip, "", "§7Clicca per sfogliare le", "§7build originali di " + name + "."));
+                cItem.setItemMeta(cMeta);
+                inv.setItem(slot++, cItem);
+            }
+        }
 
         player.openInventory(inv);
     }
@@ -994,6 +1028,45 @@ public class GameManager {
                 }
             }.runTaskLater(plugin, 100L);
         }
+    }
+
+    public void openSettingsMenu(Player player) {
+        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 9, "§8Gestione Arena");
+
+        // 1. GameMode Toggle
+        ItemStack gm = new ItemStack(Material.DIAMOND_PICKAXE);
+        org.bukkit.inventory.meta.ItemMeta gmMeta = gm.getItemMeta();
+        gmMeta.setDisplayName("§b§lCambia Modalità");
+        gmMeta.setLore(java.util.Arrays.asList("§7Passa da Creativa a Sopravvivenza", "§7e viceversa."));
+        gm.setItemMeta(gmMeta);
+
+        // 2. Custom Floor (Editor)
+        ItemStack cFloor = new ItemStack(Material.GRASS);
+        org.bukkit.inventory.meta.ItemMeta cFloorMeta = cFloor.getItemMeta();
+        cFloorMeta.setDisplayName("§a§lCustom Floor");
+        cFloorMeta.setLore(java.util.Arrays.asList("§7Modifica e salva in modo permanente", "§7il pavimento della tua arena."));
+        cFloor.setItemMeta(cFloorMeta);
+
+        // 3. Reset Floor (Base)
+        ItemStack rFloor = new ItemStack(Material.STAINED_GLASS, 1, (byte) 14);
+        org.bukkit.inventory.meta.ItemMeta rFloorMeta = rFloor.getItemMeta();
+        rFloorMeta.setDisplayName("§c§lRipristina Pavimento");
+        rFloorMeta.setLore(java.util.Arrays.asList("§7Cancella il pavimento custom e", "§7torna a quello originale."));
+        rFloor.setItemMeta(rFloorMeta);
+
+        // 4. Custom Build
+        ItemStack cBuild = new ItemStack(Material.BRICK);
+        org.bukkit.inventory.meta.ItemMeta cBuildMeta = cBuild.getItemMeta();
+        cBuildMeta.setDisplayName("§e§lCustom Build");
+        cBuildMeta.setLore(java.util.Arrays.asList("§7Costruisci e testa una", "§7build temporanea."));
+        cBuild.setItemMeta(cBuildMeta);
+
+        inv.setItem(1, gm);
+        inv.setItem(3, cFloor);
+        inv.setItem(4, rFloor);
+        inv.setItem(6, cBuild);
+
+        player.openInventory(inv);
     }
 
 }

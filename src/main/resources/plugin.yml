@@ -24,3 +24,5 @@ commands:
     description: Salva manualmente una build di Mineplex
   scanall:
     description: Scansiona tutte le build di Mineplex nel raggio
+  category:
+    description: Seleziona la categoria di build che vuoi

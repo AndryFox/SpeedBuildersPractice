@@ -282,55 +282,23 @@ public class Listeners implements Listener {
             if (npcName.equalsIgnoreCase("AndryFox_14")) {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p");
-            }
-            else if (npcName.equalsIgnoreCase("Lista Build")) {
+            } else if (npcName.equalsIgnoreCase("Lista Build")) {
                 event.setCancelled(true);
                 plugin.getGameManager().openCategoryMenu(event.getPlayer());
-            }
-            else if (npcName.equalsIgnoreCase("Trova Errori")) {
+            } else if (npcName.equalsIgnoreCase("Trova Errori")) {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p errors");
-            }
-            else if (npcName.equalsIgnoreCase("Guarda Build")) {
+            } else if (npcName.equalsIgnoreCase("Guarda Build")) {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p view");
-            }
-            else if (npcName.equalsIgnoreCase("/leave")) {
+            } else if (npcName.equalsIgnoreCase("/leave")) {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p leave");
             }
             // --- GESTIONE PAVIMENTO E CUSTOM BUILD ---
-            else if (npcName.equalsIgnoreCase("Build Floor") || npcName.equalsIgnoreCase("Pavimento Normale")) {
+            else if (npcName.equalsIgnoreCase("Gestione Arena") || npcName.equalsIgnoreCase("Impostazioni")) {
                 event.setCancelled(true);
-                Player player = event.getPlayer();
-                plugin.getGameManager().clearTemporaryFloor(player);
-                int buildId = plugin.getGameManager().getCurrentBuild(player);
-                if (buildId != -1) {
-                    plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
-                    player.sendMessage("§aPavimento ripristinato alla normalità per questa build.");
-                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_PLING, 1f, 2f);
-                }
-            }
-            else if (npcName.equalsIgnoreCase("Custom Floor") || npcName.equalsIgnoreCase("Pavimento Custom")) {
-                event.setCancelled(true);
-                plugin.getGameManager().saveAndApplyCustomFloor(event.getPlayer());
-            }
-            else if (npcName.equalsIgnoreCase("Custom Build")) {
-                event.setCancelled(true);
-                Player player = event.getPlayer();
-
-                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-                    // Salva la build temporanea sull'ID 999999 e la avvia
-                    plugin.getGameManager().saveBuild(player, 999999, "Build Temporanea");
-                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                    plugin.getGameManager().loadBuild(player, 999999, "FearGames");
-                    player.sendMessage("§aBuild temporanea pronta! Clicca sul quarzo per giocarla.");
-                } else {
-                    // Entra in modalità Creativa per costruire
-                    plugin.getGameManager().forceReset(player);
-                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
-                    player.sendMessage("§eModalità Custom Build! Costruisci quello che vuoi e clicca di nuovo l'NPC per testarla.");
-                }
+                plugin.getGameManager().openSettingsMenu(event.getPlayer());
             }
         }
     }
@@ -340,19 +308,74 @@ public class Listeners implements Listener {
         String title = event.getView().getTitle();
         Player player = (Player) event.getWhoClicked();
 
+        // 1. MENU: SELEZIONA SERVER
         if (title.equals("§8Seleziona Server")) {
             event.setCancelled(true);
             if (event.getCurrentItem() == null || !event.getCurrentItem().hasItemMeta()) return;
 
-            String name = event.getCurrentItem().getItemMeta().getDisplayName();
-            if (name.contains("feargames")) {
-                plugin.getGameManager().openBuildMenu(player, 1, "FearGames");
-            } else if (name.contains("mineplex")) {
-                plugin.getGameManager().openBuildMenu(player, 1, "Mineplex");
+            String rawName = org.bukkit.ChatColor.stripColor(event.getCurrentItem().getItemMeta().getDisplayName());
+
+            // Se clicca una qualsiasi categoria (Base o Custom)
+            if (rawName.equals("FearGames") || rawName.equals("Mineplex") || plugin.getConfig().contains("custom_categories." + rawName)) {
+                plugin.getGameManager().openBuildMenu(player, 1, rawName);
             }
             return;
         }
 
+        // 2. MENU: GESTIONE ARENA (Quello nuovo)
+        if (title.contains("Gestione Arena")) {
+            event.setCancelled(true);
+
+            if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
+            if (!event.getCurrentItem().hasItemMeta() || !event.getCurrentItem().getItemMeta().hasDisplayName()) return;
+
+            String itemName = event.getCurrentItem().getItemMeta().getDisplayName();
+            player.closeInventory();
+
+            if (itemName.contains("Cambia Modalità")) {
+                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                    player.getInventory().clear();
+                    player.sendMessage("§eModalità Sopravvivenza attivata! Inventario pulito.");
+                } else {
+                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
+                    player.sendMessage("§aModalità Creativa attivata!");
+                }
+            }
+            else if (itemName.contains("Custom Floor")) {
+                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+                    plugin.getGameManager().saveAndApplyCustomFloor(player);
+                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                } else {
+                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
+                    player.sendMessage("§eModalità Custom Floor! Piazza i blocchi e riapri questo menu per salvare.");
+                }
+            }
+            else if (itemName.contains("Ripristina Pavimento")) {
+                plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
+                plugin.saveConfig();
+                int buildId = plugin.getGameManager().getCurrentBuild(player);
+                if (buildId != -1) {
+                    plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
+                    player.sendMessage("§aPavimento ripristinato alla normalità.");
+                }
+            }
+            else if (itemName.contains("Custom Build")) {
+                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+                    plugin.getGameManager().saveBuild(player, 999999, "Build Temporanea", "FearGames");
+                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                    plugin.getGameManager().loadBuild(player, 999999, "FearGames");
+                    player.sendMessage("§aBuild temporanea pronta!");
+                } else {
+                    plugin.getGameManager().forceReset(player);
+                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
+                    player.sendMessage("§eModalità Custom Build! Costruisci e riapri questo menu per testare.");
+                }
+            }
+            return; // Ferma il codice qui senza controllare gli altri menu
+        }
+
+        // 3. MENU: LISTA DELLE MAPPE (- P. )
         if (title.contains("- P. ")) {
             event.setCancelled(true);
             if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
@@ -361,7 +384,14 @@ public class Listeners implements Listener {
             String name = event.getCurrentItem().getItemMeta().getDisplayName();
             GameManager gm = plugin.getGameManager();
 
-            String category = title.contains("Mineplex") ? "Mineplex" : "FearGames";
+            String titleStripped = org.bukkit.ChatColor.stripColor(title);
+            String category = "FearGames"; // Fallback di sicurezza
+            String leftPart = titleStripped.split(" - P. ")[0];
+            if (leftPart.startsWith("Cerca (") && leftPart.endsWith(")")) {
+                category = leftPart.substring(7, leftPart.length() - 1); // Rimuove "Cerca (" e ")"
+            } else {
+                category = leftPart;
+            }
 
             int currentPage = 1;
             try {
@@ -421,7 +451,6 @@ public class Listeners implements Listener {
                     int id = Integer.parseInt(rawId);
                     player.closeInventory();
 
-                    // Se clicchi manualmente una build, la modalità continua si spegne
                     gm.setContinuousRandom(player, false);
 
                     gm.forceReset(player);
@@ -429,27 +458,6 @@ public class Listeners implements Listener {
                     gm.startCountdown(player, 6);
                 } catch (Exception ignored) {}
             }
-        }
-    }
-
-    @EventHandler
-    public void onPlayerChat(AsyncPlayerChatEvent event) {
-        Player player = event.getPlayer();
-        GameManager gm = plugin.getGameManager();
-
-        if (gm.isAwaitingSearch(player)) {
-            event.setCancelled(true);
-            gm.setAwaitingSearch(player, false);
-
-            String msg = event.getMessage();
-
-            if (msg.equalsIgnoreCase("annulla")) {
-                player.sendMessage("§cRicerca annullata.");
-                return;
-            }
-
-            gm.setActiveSearch(player, msg);
-            Bukkit.getScheduler().runTask(plugin, () -> gm.openCategoryMenu(player));
         }
     }
 

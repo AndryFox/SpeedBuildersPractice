@@ -140,39 +140,46 @@ public class Commands implements CommandExecutor {
             return true;
         }
 
+        if (cmdName.equals("category")) {
+            if (!player.isOp() && !player.hasPermission("speedbuilders.admin")) {
+                player.sendMessage("§cNon hai i permessi.");
+                return true;
+            }
+            if (args.length < 3 || !args[0].equalsIgnoreCase("create")) {
+                player.sendMessage("§cUsa: /category create <IP> <Nome Server>");
+                return true;
+            }
+
+            String ip = args[1];
+
+            // Unisce le parole successive per il nome (es. "Koks Craft" o "TeslaCraft")
+            StringBuilder nameBuilder = new StringBuilder();
+            for (int i = 2; i < args.length; i++) nameBuilder.append(args[i]).append(" ");
+            String name = nameBuilder.toString().trim();
+
+            // Salva IP e Nome nel config sotto forma di chiave-valore
+            plugin.getConfig().set("custom_categories." + name + ".ip", ip);
+            plugin.getConfig().set("custom_categories." + name + ".name", name);
+            plugin.saveConfig();
+
+            // Crea fisicamente il file .yml della mappa
+            gm.getBuildConfig(name);
+
+            player.sendMessage("§aCategoria §l" + name + " §acreata con successo! IP impostato su: §f" + ip);
+            return true;
+        }
+
         if (cmdName.equals("map")) {
             if (args.length == 0) {
                 player.sendMessage("§8§m--------------------------------");
                 player.sendMessage("§6§lGestione Mappe - SpeedBuilders");
                 player.sendMessage("§e/map setup §7- Genera l'arena base.");
-                player.sendMessage("§e/map create <nome> §7- Salva i blocchi che hai piazzato.");
-                player.sendMessage("§e/map load <id> <categoria> §7- Carica una build.");
-                player.sendMessage("§e/map list §7- Mostra tutte le build salvate.");
-                player.sendMessage("§e/map delete <id> §7- Elimina una build.");
+                player.sendMessage("§e/map save <Categoria> <Nome> §7- Salva una nuova build.");
+                player.sendMessage("§e/map update <Categoria> <id> §7- Aggiorna i blocchi.");
+                player.sendMessage("§e/map rename <Categoria> <id> <Nome> §7- Rinomina build.");
+                player.sendMessage("§e/map delete <Categoria> <id> §7- Elimina una build.");
+                player.sendMessage("§e/map load <id> <Categoria> §7- Carica una build.");
                 player.sendMessage("§8§m--------------------------------");
-                return true;
-            }
-
-            if (args[0].equalsIgnoreCase("delete") && args.length == 2) {
-                int buildId;
-                try { buildId = Integer.parseInt(args[1]); } catch (Exception e) {
-                    player.sendMessage("§cID non valido."); return true;
-                }
-
-                if (!plugin.getFearConfig().contains("builds." + buildId) && !plugin.getMineplexConfig().contains("builds." + buildId)) {
-                    player.sendMessage("§cLa build con ID " + buildId + " non esiste.");
-                    return true;
-                }
-
-                plugin.getGameManager().setPendingDelete(player, buildId);
-
-                TextComponent warning = new TextComponent("§cStai per eliminare la build ID " + buildId + ". ");
-                TextComponent clickBtn = new TextComponent("§4§l[CLICCA QUI PER CONFERMARE]");
-                clickBtn.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/map confirm"));
-                clickBtn.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§7Clicca per eliminare definitivamente").create()));
-
-                warning.addExtra(clickBtn);
-                player.spigot().sendMessage(warning);
                 return true;
             }
 
@@ -185,71 +192,70 @@ public class Commands implements CommandExecutor {
                 case "setup":
                     gm.setupIsland(player);
                     break;
-                case "confirm":
-                    if (gm.hasPendingDelete(player)) {
-                        int toDelete = gm.getPendingDelete(player);
-
-                        if(plugin.getFearConfig().contains("builds." + toDelete)) {
-                            plugin.getFearConfig().set("builds." + toDelete, null);
-                            try { plugin.getFearConfig().save(new java.io.File(plugin.getDataFolder(), "feargames_builds.yml")); } catch (Exception ignored){}
-                        }
-                        if(plugin.getMineplexConfig().contains("builds." + toDelete)) {
-                            plugin.getMineplexConfig().set("builds." + toDelete, null);
-                            try { plugin.getMineplexConfig().save(new java.io.File(plugin.getDataFolder(), "mineplex_builds.yml")); } catch (Exception ignored){}
-                        }
-
-                        player.sendMessage("§aBuild ID '" + toDelete + "' eliminata.");
-                        gm.removePendingDelete(player);
-                    } else player.sendMessage("§cNessuna eliminazione in sospeso.");
-                    break;
                 case "save":
-                    if (args.length < 2) { player.sendMessage("§cUsa: /map save <Nome>"); break; }
+                    if (args.length < 3) { player.sendMessage("§cUsa: /map save <Categoria> <Nome>"); break; }
+                    String catSave = args[1];
                     StringBuilder nameBuilder = new StringBuilder();
-                    for (int i = 1; i < args.length; i++) nameBuilder.append(args[i]).append(" ");
+                    for (int i = 2; i < args.length; i++) nameBuilder.append(args[i]).append(" ");
                     int nextId = 1;
-                    if (plugin.getFearConfig().contains("builds")) {
-                        for (String key : plugin.getFearConfig().getConfigurationSection("builds").getKeys(false)) {
+                    org.bukkit.configuration.file.FileConfiguration cfgSave = gm.getBuildConfig(catSave);
+                    if (cfgSave.contains("builds")) {
+                        for (String key : cfgSave.getConfigurationSection("builds").getKeys(false)) {
                             try { if (Integer.parseInt(key) >= nextId) nextId = Integer.parseInt(key) + 1; } catch (Exception ignored) {}
                         }
                     }
-                    gm.saveBuild(player, nextId, nameBuilder.toString().trim());
+                    gm.saveBuild(player, nextId, nameBuilder.toString().trim(), catSave);
                     break;
                 case "rename":
-                    if (args.length < 3) { player.sendMessage("§cUsa: /map rename <id> <Nome>"); break; }
+                    if (args.length < 4) { player.sendMessage("§cUsa: /map rename <Categoria> <id> <Nome>"); break; }
                     try {
-                        int id = Integer.parseInt(args[1]);
-                        String newName = "";
+                        String catRen = args[1];
+                        int id = Integer.parseInt(args[2]);
                         StringBuilder renameBuilder = new StringBuilder();
-                        for (int i = 2; i < args.length; i++) renameBuilder.append(args[i]).append(" ");
-                        newName = renameBuilder.toString().trim();
+                        for (int i = 3; i < args.length; i++) renameBuilder.append(args[i]).append(" ");
+                        String newName = renameBuilder.toString().trim();
 
-                        if (plugin.getFearConfig().contains("builds." + id)) {
-                            plugin.getFearConfig().set("builds." + id + ".name", newName);
-                            try { plugin.getFearConfig().save(new java.io.File(plugin.getDataFolder(), "feargames_builds.yml")); } catch (Exception ignored){}
-                            player.sendMessage("§aNome cambiato in '" + newName + "'!");
-                        } else if (plugin.getMineplexConfig().contains("builds." + id)) {
-                            plugin.getMineplexConfig().set("builds." + id + ".name", newName);
-                            try { plugin.getMineplexConfig().save(new java.io.File(plugin.getDataFolder(), "mineplex_builds.yml")); } catch (Exception ignored){}
+                        org.bukkit.configuration.file.FileConfiguration cfgRen = gm.getBuildConfig(catRen);
+                        if (cfgRen.contains("builds." + id)) {
+                            cfgRen.set("builds." + id + ".name", newName);
+                            cfgRen.save(new java.io.File(plugin.getDataFolder(), catRen.toLowerCase() + "_builds.yml"));
                             player.sendMessage("§aNome cambiato in '" + newName + "'!");
                         } else {
-                            player.sendMessage("§cID non trovato.");
+                            player.sendMessage("§cID non trovato in " + catRen + ".");
                         }
                     } catch (Exception e) { player.sendMessage("§cL'ID deve essere un numero!"); }
                     break;
                 case "update":
-                    if (args.length < 2) { player.sendMessage("§cUsa: /map update <id>"); break; }
+                    if (args.length < 3) { player.sendMessage("§cUsa: /map update <Categoria> <id>"); break; }
                     try {
-                        int id = Integer.parseInt(args[1]);
-                        if (plugin.getFearConfig().contains("builds." + id)) {
-                            gm.saveBuild(player, id, plugin.getFearConfig().getString("builds." + id + ".name", "Sconosciuta"));
+                        String catUp = args[1];
+                        int id = Integer.parseInt(args[2]);
+                        org.bukkit.configuration.file.FileConfiguration cfgUp = gm.getBuildConfig(catUp);
+                        if (cfgUp.contains("builds." + id)) {
+                            gm.saveBuild(player, id, cfgUp.getString("builds." + id + ".name", "Sconosciuta"), catUp);
                             player.sendMessage("§eBlocchi aggiornati!");
                         } else {
-                            player.sendMessage("§cID non trovato in FearGames (Supportato solo per build salvate manualmente).");
+                            player.sendMessage("§cID non trovato in " + catUp + ".");
                         }
                     } catch (Exception e) { player.sendMessage("§cL'ID deve essere un numero!"); }
                     break;
+                case "delete":
+                    if (args.length < 3) { player.sendMessage("§cUsa: /map delete <Categoria> <id>"); break; }
+                    try {
+                        String catDel = args[1];
+                        int id = Integer.parseInt(args[2]);
+                        org.bukkit.configuration.file.FileConfiguration cfgDel = gm.getBuildConfig(catDel);
+                        if (!cfgDel.contains("builds." + id)) {
+                            player.sendMessage("§cLa build con ID " + id + " non esiste in " + catDel + ".");
+                            break;
+                        }
+                        cfgDel.set("builds." + id, null);
+                        cfgDel.save(new java.io.File(plugin.getDataFolder(), catDel.toLowerCase() + "_builds.yml"));
+                        player.sendMessage("§aBuild eliminata definitivamente da " + catDel + "!");
+                    } catch (Exception e) { player.sendMessage("§cID non valido."); }
+                    break;
                 case "load":
-                    if (args.length < 3) { player.sendMessage("§cUsa: /map load <id> <FearGames|Mineplex>"); break; }
+                    if (args.length < 3) { player.sendMessage("§cUsa: /map load <id> <Categoria>"); break; }
                     try { gm.loadBuild(player, Integer.parseInt(args[1]), args[2]); } catch (Exception e) { player.sendMessage("§cID invalido!"); }
                     break;
                 case "setholo":
@@ -269,7 +275,7 @@ public class Commands implements CommandExecutor {
                     player.sendMessage("§aNPC Exit creato alla tua posizione!");
                     break;
                 default:
-                    player.sendMessage("§cUsa: /map <save|load|update|rename|delete|setup|setlobby>");
+                    player.sendMessage("§cUsa: /map per vedere la lista dei comandi");
             }
         }
         return true;
