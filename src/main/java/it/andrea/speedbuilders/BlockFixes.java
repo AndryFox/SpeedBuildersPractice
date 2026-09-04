@@ -239,11 +239,9 @@ public class BlockFixes implements Listener {
             }
         }
         else if (player.getGameMode() == GameMode.CREATIVE) {
-            // In Creativa blocca la rottura dell'isola, a meno che non sia accovacciato
-            if (!isBuildArea && !isFloorArea) {
-                if (!player.isSneaking()) {
+            if (!isBuildArea) {
+                if (!player.isOp()) {
                     event.setCancelled(true);
-                    player.sendMessage("§cShift+Click per rompere l'isola in creativa!");
                 }
             }
         }
@@ -270,11 +268,9 @@ public class BlockFixes implements Listener {
             }
         }
         else if (player.getGameMode() == GameMode.CREATIVE) {
-            // In Creativa può piazzare nell'area build o modificare il pavimento. Resto dell'isola blindato.
-            if (!isBuildArea && !isFloorArea) {
-                if (!player.isSneaking()) {
+            if (!isBuildArea) {
+                if (!player.isOp()) {
                     event.setCancelled(true);
-                    player.sendMessage("§cShift+Click per piazzare blocchi sull'isola in creativa!");
                 }
             }
         }

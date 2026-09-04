@@ -157,35 +157,30 @@ public class GameManager {
     }
 
     public void saveAndApplyCustomFloor(Player player) {
-        World w = player.getWorld();
+        org.bukkit.World w = player.getWorld();
         java.util.List<String> floorBlocks = new java.util.ArrayList<>();
 
-        // Attiva in modo permanente la modalità Custom Floor per il giocatore
         plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", true);
 
         for (int x = -3; x <= 3; x++) {
             for (int z = -3; z <= 3; z++) {
-                Block b101 = w.getBlockAt(x, 101, z);
-                Block b100 = w.getBlockAt(x, 100, z);
+                org.bukkit.block.Block b101 = w.getBlockAt(x, 101, z);
+                org.bukkit.block.Block b100 = w.getBlockAt(x, 100, z);
 
-                if (b101.getType() != Material.AIR) {
-                    // Salva il blocco piazzato e lo spinge giù
+                if (b101.getType() != org.bukkit.Material.AIR) {
                     floorBlocks.add(x + ";" + z + ";" + b101.getType().name() + ";" + b101.getData());
                     b100.setType(b101.getType());
                     b100.setData(b101.getData());
-                    b101.setType(Material.AIR);
                 } else {
-                    // Se a Y=101 non hai messo nulla, resetta quel punto a erba pura
                     floorBlocks.add(x + ";" + z + ";GRASS;0");
-                    b100.setType(Material.GRASS);
+                    b100.setType(org.bukkit.Material.GRASS);
                 }
             }
         }
 
         plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor_data", floorBlocks);
         plugin.saveConfig();
-        player.sendMessage("§aPavimento Custom aggiornato! Rimarrà così per tutte le build.");
-        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+        // Nessun messaggio e nessun suono.
     }
 
     @SuppressWarnings("deprecation")
@@ -827,7 +822,9 @@ public class GameManager {
         java.util.Set<String> processedHotbar = new java.util.HashSet<>();
 
         if (hotbar != null && !hotbar.isEmpty()) {
-            for (String h : hotbar) {
+            for (int i = 0; i < 9 && i < hotbar.size(); i++) {
+                String h = hotbar.get(i);
+
                 if (!h.equals("AIR;0")) {
                     String[] matDataRaw = h.split(";");
                     String rawMat = matDataRaw[0];
@@ -840,7 +837,9 @@ public class GameManager {
                             ItemStack egg = plugin.getMobManager().getMobEgg(rawMat.substring(4));
                             int totalNeeded = blockCounts.get(rawMat);
                             egg.setAmount(Math.min(totalNeeded, 64));
-                            player.getInventory().setItem(slotIndex++, egg);
+
+                            // Piazza l'oggetto ESATTAMENTE nello slot 'i' in cui è stato salvato
+                            player.getInventory().setItem(i, egg);
 
                             int leftOver = totalNeeded - egg.getAmount();
                             if (leftOver > 0) blockCounts.put(rawMat, leftOver);
@@ -863,7 +862,9 @@ public class GameManager {
                         if (blockCounts.containsKey(key)) {
                             int totalNeeded = blockCounts.get(key);
                             int toPutInSlot = Math.min(totalNeeded, 64);
-                            player.getInventory().setItem(slotIndex++, new ItemStack(normalized.getType(), toPutInSlot, normalized.getDurability()));
+
+                            // Piazza l'oggetto ESATTAMENTE nello slot 'i' in cui è stato salvato
+                            player.getInventory().setItem(i, new ItemStack(normalized.getType(), toPutInSlot, normalized.getDurability()));
 
                             int leftOver = totalNeeded - toPutInSlot;
                             if (leftOver > 0) blockCounts.put(key, leftOver);

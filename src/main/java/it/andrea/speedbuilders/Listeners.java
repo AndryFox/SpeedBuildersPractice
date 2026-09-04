@@ -263,13 +263,16 @@ public class Listeners implements Listener {
         if (event.getWorld().getName().equals("practice") && event.toWeatherState()) event.setCancelled(true);
     }
 
-    @EventHandler
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
     public void onCitizensNpcClick(PlayerInteractEntityEvent event) {
         // Ignora il doppio click generato dalla mano secondaria
         if (event.getHand() == org.bukkit.inventory.EquipmentSlot.OFF_HAND) return;
 
-        if (event.getRightClicked().hasMetadata("NPC")) {
-            String npcName = org.bukkit.ChatColor.stripColor(event.getRightClicked().getName());
+        org.bukkit.entity.Entity clicked = event.getRightClicked();
+
+        // Riconosce che è un NPC di Citizens
+        if (clicked.hasMetadata("NPC")) {
+            String npcName = org.bukkit.ChatColor.stripColor(clicked.getName());
 
             if (npcName.equalsIgnoreCase("AndryFox_14")) {
                 event.setCancelled(true);
@@ -318,29 +321,31 @@ public class Listeners implements Listener {
             org.bukkit.World practiceWorld = Bukkit.getWorld("practice");
             Location arenaLoc = new Location(practiceWorld, 0.5, 101, 5.5, 180f, 35f);
 
+            // Chiude l'inventario prima del teletrasporto per evitare bug visivi
+            player.closeInventory();
+
             if (itemName.contains("Costruttore")) {
-                player.setGameMode(org.bukkit.GameMode.CREATIVE);
+                if (practiceWorld != null) player.teleport(arenaLoc);
                 player.getInventory().clear();
 
-                if (practiceWorld != null) {
-                    player.teleport(arenaLoc);
-                }
-
-                player.sendMessage("§aSei entrato nell'arena in modalità Costruttore!");
+                // Ritardo di 2 tick per evitare che i plugin dei mondi forzino la Survival ai non-OP
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
+                    player.sendMessage("§aSei entrato nell'arena in modalità Costruttore!");
+                }, 2L);
             }
             else if (itemName.contains("Giocatore")) {
-                player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                if (practiceWorld != null) player.teleport(arenaLoc);
                 player.getInventory().clear();
 
-                if (practiceWorld != null) {
-                    player.teleport(arenaLoc);
+                // Ritardo di 2 tick anche qui per sicurezza
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
                     player.setAllowFlight(true);
                     player.setFlying(false);
-                }
-
-                player.sendMessage("§eSei entrato nell'arena in modalità Giocatore! Clicca sul bordo in quarzo per ricominciare.");
+                    player.sendMessage("§eSei entrato nell'arena in modalità Giocatore! Clicca sul bordo in quarzo per ricominciare.");
+                }, 2L);
             }
-            player.closeInventory();
             return;
         }
 
