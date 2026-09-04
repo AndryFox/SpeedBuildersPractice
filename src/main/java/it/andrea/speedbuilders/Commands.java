@@ -322,6 +322,25 @@ public class Commands implements CommandExecutor {
                     plugin.getGameManager().resetCustomFloor(player);
                     player.sendMessage("§aPavimento ripristinato a quello di default!");
                     break;
+                case "create":
+                    if (args.length < 3) { player.sendMessage("§cUsa: /map create <Categoria> <Nome>"); break; }
+                    String targetCat = args[1];
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 2; i < args.length; i++) sb.append(args[i]).append(" ");
+                    String buildName = sb.toString().trim();
+
+                    // Salva in una categoria fittizia "Review" aggiungendo la categoria richiesta nel nome
+                    int reviewId = 1;
+                    org.bukkit.configuration.file.FileConfiguration reviewCfg = gm.getBuildConfig("Review");
+                    if (reviewCfg.contains("builds")) {
+                        for (String key : reviewCfg.getConfigurationSection("builds").getKeys(false)) {
+                            try { if (Integer.parseInt(key) >= reviewId) reviewId = Integer.parseInt(key) + 1; } catch (Exception ignored) {}
+                        }
+                    }
+                    // La salva come: "Casetta [FearGames]" nel file review_builds.yml
+                    gm.saveBuild(player, reviewId, buildName + " [" + targetCat + "]", "Review");
+                    player.sendMessage("§aBuild '" + buildName + "' inviata con successo agli Admin per l'approvazione!");
+                    break;
                 default:
                     player.sendMessage("§cUsa: /map per vedere la lista dei comandi");
             }

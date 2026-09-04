@@ -315,18 +315,7 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // 2. Impedisce fisicamente il piazzamento del blocco di TNT
-    @EventHandler
-    public void onTNTPlace(org.bukkit.event.block.BlockPlaceEvent event) {
-        if (event.getPlayer().getWorld().getName().equals("practice")) {
-            if (event.getBlock().getType() == Material.TNT) {
-                event.setCancelled(true);
-                event.getPlayer().sendMessage("§cLa TNT non può essere piazzata!");
-            }
-        }
-    }
-
-    // 3. Blocca la creazione di portali del Nether e dell'End
+    // 2. Blocca la creazione di portali del Nether e dell'End
     @EventHandler
     public void onPortalCreate(org.bukkit.event.world.PortalCreateEvent event) {
         if (event.getWorld().getName().equals("practice")) {
@@ -334,7 +323,7 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // 4. Blocca l'accensione di fuochi (anche accidentali) o la loro propagazione
+    // 3. Blocca l'accensione di fuochi (anche accidentali) o la loro propagazione
     @EventHandler
     public void onFireIgnite(org.bukkit.event.block.BlockIgniteEvent event) {
         if (event.getBlock().getWorld().getName().equals("practice")) {

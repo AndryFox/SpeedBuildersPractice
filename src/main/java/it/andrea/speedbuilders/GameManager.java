@@ -58,20 +58,6 @@ public class GameManager {
 
     public String getTimerMode(Player p) { return timerModes.getOrDefault(p, "FIRST_BLOCK"); }
     public void setTimerMode(Player p, String mode) { timerModes.put(p, mode); }
-
-    public void readyBuild(Player player) {
-        int buildId = getCurrentBuild(player);
-        if (buildId == -1) return;
-
-        if (getTimerMode(player).equals("FIRST_BLOCK")) {
-            giveBuildItems(player, buildId);
-            setState(player, "WAITING_FIRST_BLOCK");
-            player.sendTitle("", "§ePiazza un blocco per iniziare!", 5, 40, 10);
-        } else {
-            startCountdown(player, 3);
-        }
-    }
-
     public String getState(Player player) { return playerStates.getOrDefault(player, "IDLE"); }
     public void setState(Player player, String state) { playerStates.put(player, state); }
     public int getCurrentBuild(Player player) { return currentBuild.getOrDefault(player, -1); }
@@ -420,6 +406,30 @@ public class GameManager {
         plugin.getMobManager().clearMobs(world);
     }
 
+    public void readyBuild(Player player) {
+        // Avvia sempre l'osservazione di 3 secondi
+        startCountdown(player, 3);
+    }
+
+    // Metodo per saltare l'osservazione e iniziare all'istante
+    public void instantReady(Player player) {
+        int buildId = getCurrentBuild(player);
+        if (buildId == -1) return;
+
+        player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
+        clearPlot(player.getWorld());
+        giveBuildItems(player, buildId);
+
+        if (getTimerMode(player).equals("FIRST_BLOCK")) {
+            playerStates.put(player, "WAITING_FIRST_BLOCK");
+            player.sendTitle("", "§eVIA! §7(Il timer parte al primo blocco)", 0, 40, 10);
+        } else {
+            player.sendTitle("", "§cVIA!", 0, 20, 10);
+            playerStates.put(player, "PLAYING");
+            startTimer(player);
+        }
+    }
+
     public void startCountdown(Player player, int countdown) {
         playerStates.put(player, "COUNTDOWN");
         int buildId = currentBuild.getOrDefault(player, -1);
@@ -441,15 +451,24 @@ public class GameManager {
                 } else if (count > 0) {
                     player.sendTitle("", "§a" + count, 0, 25, 0);
                     int pitchIndex = Math.max(0, Math.min(5, 6 - count));
-                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, scale[pitchIndex]);
+                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_PLING, 1f, scale[pitchIndex]);
                     count--;
                 } else {
-                    player.sendTitle("", "§cTempo esaurito!", 0, 20, 10);
-                    player.playSound(player.getLocation(), Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
+                    // Fine del periodo di osservazione: pulisce la mappa e dà gli oggetti
+                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
                     clearPlot(player.getWorld());
                     if (buildId != -1) giveBuildItems(player, buildId);
-                    playerStates.put(player, "PLAYING");
-                    startTimer(player);
+
+                    // Controlla come deve comportarsi il timer
+                    if (getTimerMode(player).equals("FIRST_BLOCK")) {
+                        playerStates.put(player, "WAITING_FIRST_BLOCK");
+                        player.sendTitle("", "§7(Il timer parte al primo blocco)", 0, 40, 10);
+                    } else {
+                        player.sendTitle("", "§cTempo esaurito!", 0, 20, 10);
+                        playerStates.put(player, "PLAYING");
+                        startTimer(player);
+                    }
+
                     this.cancel();
                 }
             }
@@ -686,37 +705,70 @@ public class GameManager {
             inv.setItem(i, filler);
         }
 
+        ItemStack searchBtn = new ItemStack(Material.NAME_TAG);
+        org.bukkit.inventory.meta.ItemMeta searchMeta = searchBtn.getItemMeta();
+        searchMeta.setDisplayName("§e§lCerca Build Globale");
+        searchMeta.setLore(java.util.Arrays.asList("§7Clicca per cercare una", "§7build in tutti i server."));
+        searchBtn.setItemMeta(searchMeta);
+        inv.setItem(49, searchBtn); // Tasto al centro in basso
+
         player.openInventory(inv);
     }
 
     public void openBuildMenu(Player player, int page, String category) {
         String filter = activeSearch.get(player);
-        String title = filter == null ? "§8" + category + " - P. " + page : "§8Cerca (" + category + ") - P. " + page;
+        String title = filter == null ? "§8" + category + " - P. " + page : "§8Ricerca - P. " + page;
         if (title.length() > 32) title = title.substring(0, 32);
 
         org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 54, title);
-        FileConfiguration config = getBuildConfig(category);
 
-        List<Integer> buildIds = new ArrayList<>();
-        if (config.contains("builds")) {
-            for (String key : config.getConfigurationSection("builds").getKeys(false)) {
-                String name = config.getString("builds." + key + ".name", "Sconosciuta");
-                if (filter == null || name.toLowerCase().contains(filter.toLowerCase())) {
-                    try { buildIds.add(Integer.parseInt(key)); } catch (Exception ignored) {}
+        // Classe temporanea per raccogliere e ordinare le build
+        class BuildData {
+            int id; String name; String cat;
+            BuildData(int id, String name, String cat) { this.id = id; this.name = name; this.cat = cat; }
+        }
+        List<BuildData> buildList = new ArrayList<>();
+
+        List<String> categoriesToSearch = new ArrayList<>();
+        if (category.equals("Global")) {
+            categoriesToSearch.add("FearGames");
+            categoriesToSearch.add("Mineplex");
+            categoriesToSearch.add("Custom");
+            org.bukkit.configuration.ConfigurationSection section = plugin.getConfig().getConfigurationSection("custom_categories");
+            if (section != null) {
+                for (String key : section.getKeys(false)) {
+                    if (!categoriesToSearch.contains(key)) categoriesToSearch.add(key);
+                }
+            }
+        } else {
+            categoriesToSearch.add(category);
+        }
+
+        for (String searchCat : categoriesToSearch) {
+            FileConfiguration config = getBuildConfig(searchCat);
+            if (config.contains("builds")) {
+                for (String key : config.getConfigurationSection("builds").getKeys(false)) {
+                    String name = config.getString("builds." + key + ".name", "Sconosciuta");
+                    if (filter == null || name.toLowerCase().contains(filter.toLowerCase())) {
+                        try { buildList.add(new BuildData(Integer.parseInt(key), name, searchCat)); } catch (Exception ignored) {}
+                    }
                 }
             }
         }
 
+        // ORDINE ALFABETICO A-Z
+        buildList.sort((b1, b2) -> b1.name.compareToIgnoreCase(b2.name));
+
         int maxItemsPerPage = 45;
         int startIndex = (page - 1) * maxItemsPerPage;
-        int endIndex = Math.min(startIndex + maxItemsPerPage, buildIds.size());
+        int endIndex = Math.min(startIndex + maxItemsPerPage, buildList.size());
 
         for (int i = startIndex; i < endIndex; i++) {
-            int id = buildIds.get(i);
-            String name = config.getString("builds." + id + ".name", "Sconosciuta");
+            BuildData bd = buildList.get(i);
+            FileConfiguration config = getBuildConfig(bd.cat);
 
             ItemStack item = new ItemStack(Material.PAPER);
-            List<String> hotbar = config.getStringList("builds." + id + ".hotbar");
+            List<String> hotbar = config.getStringList("builds." + bd.id + ".hotbar");
             if (hotbar != null && !hotbar.isEmpty()) {
                 for (String h : hotbar) {
                     if (!h.startsWith("AIR")) {
@@ -727,12 +779,9 @@ public class GameManager {
                             try {
                                 Material rawMat = Material.valueOf(p[0]);
                                 byte rawData = Byte.parseByte(p[1]);
-                                ItemStack normalized = ItemUtils.normalizeItem(rawMat, rawData, category);
-                                if (normalized != null) {
-                                    item = new ItemStack(normalized.getType(), 1, normalized.getDurability());
-                                } else {
-                                    item = new ItemStack(rawMat, 1, rawData);
-                                }
+                                ItemStack normalized = ItemUtils.normalizeItem(rawMat, rawData, bd.cat);
+                                if (normalized != null) item = new ItemStack(normalized.getType(), 1, normalized.getDurability());
+                                else item = new ItemStack(rawMat, 1, rawData);
                             } catch (Exception ignored) {}
                         }
                         break;
@@ -741,10 +790,9 @@ public class GameManager {
             }
 
             org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
-            meta.setDisplayName("§a" + name);
-            meta.setLore(java.util.Arrays.asList("§7ID: " + id, "", "§eClicca per giocare!"));
+            meta.setDisplayName("§a" + bd.name);
+            meta.setLore(java.util.Arrays.asList("§7ID: " + bd.id, "§7Server: §f" + bd.cat, "", "§eClicca per giocare!"));
             item.setItemMeta(meta);
-
             inv.setItem(i - startIndex, item);
         }
 
@@ -756,7 +804,7 @@ public class GameManager {
             inv.setItem(45, prev);
         }
 
-        if (endIndex < buildIds.size()) {
+        if (endIndex < buildList.size()) {
             ItemStack next = new ItemStack(Material.ARROW);
             org.bukkit.inventory.meta.ItemMeta meta = next.getItemMeta();
             meta.setDisplayName("§aPagina Successiva");
@@ -764,31 +812,26 @@ public class GameManager {
             inv.setItem(53, next);
         }
 
-        // Tasto per tornare alla lista dei Server (Slot 48, a sinistra del tasto Cerca)
         ItemStack backBtn = new ItemStack(Material.DARK_OAK_DOOR_ITEM);
         org.bukkit.inventory.meta.ItemMeta backMeta = backBtn.getItemMeta();
         backMeta.setDisplayName("§c§lTorna ai Server");
-        backMeta.setLore(java.util.Arrays.asList("§7Clicca per tornare alla", "§7selezione del server."));
         backBtn.setItemMeta(backMeta);
         inv.setItem(48, backBtn);
 
         ItemStack searchBtn = new ItemStack(Material.NAME_TAG);
         org.bukkit.inventory.meta.ItemMeta searchMeta = searchBtn.getItemMeta();
         searchMeta.setDisplayName("§e§lCerca Build");
-        if (filter == null) {
-            searchMeta.setLore(java.util.Arrays.asList("§7Tasto Sinistro: §fCerca una build"));
-        } else {
-            searchMeta.setLore(java.util.Arrays.asList("§7Filtro attivo: §f" + filter, "", "§7Tasto Sinistro: §fNuova ricerca", "§7Tasto Destro: §cRimuovi filtro"));
-        }
+        if (filter == null) searchMeta.setLore(java.util.Arrays.asList("§7Tasto Sinistro: §fCerca una build"));
+        else searchMeta.setLore(java.util.Arrays.asList("§7Filtro attivo: §f" + filter, "", "§7Tasto Sinistro: §fNuova ricerca", "§7Tasto Destro: §cRimuovi filtro"));
         searchBtn.setItemMeta(searchMeta);
-        inv.setItem(48, searchBtn); // Spostato a sinistra
+        inv.setItem(48, searchBtn);
 
         ItemStack randomBtn = new ItemStack(Material.ENDER_PEARL);
         org.bukkit.inventory.meta.ItemMeta randomMeta = randomBtn.getItemMeta();
         randomMeta.setDisplayName("§d§lBuild Casuale");
-        randomMeta.setLore(java.util.Arrays.asList("§7Tasto Sinistro (SX): §aRandom Continua", "§8(Cambia build ad ogni completamento)", "", "§7Tasto Destro (DX): §eRandom Singola", "§8(Sceglie una build e la ripete all'infinito)"));
+        randomMeta.setLore(java.util.Arrays.asList("§7Tasto Sinistro (SX): §aRandom Continua", "§7Tasto Destro (DX): §eRandom Singola"));
         randomBtn.setItemMeta(randomMeta);
-        inv.setItem(50, randomBtn); // Posizionato a destra
+        inv.setItem(50, randomBtn);
 
         player.openInventory(inv);
     }
