@@ -58,6 +58,11 @@ public class Commands implements CommandExecutor {
                 player.setFlying(true);
                 player.sendMessage("§aVolo attivato!");
 
+                // Segna l'uso della fly se attivata a round in corso
+                if (plugin.getGameManager().getState(player).equals("PLAYING")) {
+                    plugin.getGameManager().setUsedFly(player, true);
+                }
+
                 if (plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
                     plugin.getConfig().set("players." + player.getUniqueId() + ".dj", false);
                     plugin.saveConfig();

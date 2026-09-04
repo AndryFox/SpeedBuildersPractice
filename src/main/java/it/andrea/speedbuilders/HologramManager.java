@@ -114,6 +114,14 @@ public class HologramManager {
                     String playerName = Bukkit.getOfflinePlayer(UUID.fromString(uuidStr)).getName();
                     if (playerName == null) playerName = "Sconosciuto";
 
+                    // Legge i tag dal config
+                    String tags = plugin.getConfig().getString("records." + uuidStr + "." + recordKey + "_tags", "");
+
+                    // Aggiunge il tag visivo accanto al nome (es: AndryFox_14 fly zen)
+                    if (!tags.isEmpty()) {
+                        playerName += " §8[§7" + tags + "§8]";
+                    }
+
                     times.put(playerName, time);
                 }
             }

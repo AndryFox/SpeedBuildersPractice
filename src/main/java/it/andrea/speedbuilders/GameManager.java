@@ -38,6 +38,7 @@ public class GameManager {
     private final HashMap<Player, Boolean> awaitingCategory = new HashMap<>();
     private final HashMap<String, FileConfiguration> dynamicConfigs = new HashMap<>();
     private final HashMap<Player, String> timerModes = new HashMap<>();
+    private final HashMap<Player, Boolean> usedFly = new HashMap<>();
 
     public void setAwaitingCategory(Player p, boolean val) { if (val) awaitingCategory.put(p, true); else awaitingCategory.remove(p); }
     public boolean isAwaitingCategory(Player p) { return awaitingCategory.containsKey(p); }
@@ -58,6 +59,8 @@ public class GameManager {
 
     public String getTimerMode(Player p) { return timerModes.getOrDefault(p, "FIRST_BLOCK"); }
     public void setTimerMode(Player p, String mode) { timerModes.put(p, mode); }
+    public void setUsedFly(Player p, boolean val) { if (val) usedFly.put(p, true); else usedFly.remove(p); }
+    public boolean hasUsedFly(Player p) { return usedFly.getOrDefault(p, false); }
     public String getState(Player player) { return playerStates.getOrDefault(player, "IDLE"); }
     public void setState(Player player, String state) { playerStates.put(player, state); }
     public int getCurrentBuild(Player player) { return currentBuild.getOrDefault(player, -1); }
@@ -78,6 +81,7 @@ public class GameManager {
         if (activeTimers.containsKey(player)) activeTimers.remove(player);
         if (actionBars.containsKey(player)) { actionBars.get(player).cancel(); actionBars.remove(player); }
         if (countdownTasks.containsKey(player)) { countdownTasks.get(player).cancel(); countdownTasks.remove(player); }
+        usedFly.remove(player); // <-- AGGIUNTO QUI
         player.getInventory().clear();
         clearPlot(player.getWorld());
     }
@@ -478,6 +482,12 @@ public class GameManager {
 
     public void startTimer(Player player) {
         activeTimers.put(player, System.currentTimeMillis());
+
+        // Se inizia il round col volo già attivo, lo marchiamo
+        if (player.getAllowFlight()) {
+            setUsedFly(player, true);
+        }
+
         int buildId = currentBuild.getOrDefault(player, -1);
         String cat = getCurrentCategory(player);
 
@@ -518,22 +528,45 @@ public class GameManager {
 
         long elapsed = System.currentTimeMillis() - activeTimers.getOrDefault(player, System.currentTimeMillis());
         activeTimers.remove(player);
+
+        String cat = getCurrentCategory(player);
+
+        // --- CALCOLO TAGS E PENALITA' ---
+        boolean flyUsed = hasUsedFly(player);
+        boolean isZen = getTimerMode(player).equals("COUNTDOWN");
+
+        String tags = "";
+        if (flyUsed) tags += "fly ";
+        if (isZen) tags += "zen";
+        tags = tags.trim();
+
+        // Applica 3000 ms (3 secondi) di penalità se ha usato la Fly e non è su Hypixel
+        if (flyUsed && !cat.equalsIgnoreCase("Hypixel")) {
+            elapsed += 3000;
+            player.sendMessage("§c§lATTENZIONE! §7Hai ricevuto §c+3 secondi §7di penalità per aver usato la Fly.");
+        }
+
         double seconds = elapsed / 1000.0;
 
         player.sendTitle("", "§aCostruzione perfetta! §8| §fTempo: §e" + seconds + "s", 5, 40, 10);
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
 
         int buildId = currentBuild.getOrDefault(player, -1);
-        String cat = getCurrentCategory(player); // Prende la categoria attuale
 
         if (buildId != -1) {
-            // Salva il record usando Categoria_ID (es. FearGames_1)
             String recordKey = cat + "_" + buildId;
             String recordPath = "records." + player.getUniqueId().toString() + "." + recordKey;
             long currentRecord = plugin.getConfig().getLong(recordPath, 0);
 
             if (currentRecord == 0 || elapsed < currentRecord) {
                 plugin.getConfig().set(recordPath, elapsed);
+                // Salva i tag se ce ne sono, altrimenti li rimuove dal config
+                if (!tags.isEmpty()) {
+                    plugin.getConfig().set(recordPath + "_tags", tags);
+                } else {
+                    plugin.getConfig().set(recordPath + "_tags", null);
+                }
+
                 plugin.saveConfig();
                 player.sendMessage(currentRecord == 0 ? "§b§lRecord Personale: §f" + seconds + "s" : "§b§lRecord Personale: §f" + seconds + "s §7(" + (currentRecord / 1000.0) + "s -> " + seconds + "s)");
             }
