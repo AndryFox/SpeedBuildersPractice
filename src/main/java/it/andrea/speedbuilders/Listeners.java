@@ -265,30 +265,42 @@ public class Listeners implements Listener {
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
     public void onCitizensNpcClick(PlayerInteractEntityEvent event) {
-        // Ignora il doppio click generato dalla mano secondaria
         if (event.getHand() == org.bukkit.inventory.EquipmentSlot.OFF_HAND) return;
 
         org.bukkit.entity.Entity clicked = event.getRightClicked();
 
-        // Riconosce che è un NPC di Citizens
         if (clicked.hasMetadata("NPC")) {
-            String npcName = org.bukkit.ChatColor.stripColor(clicked.getName());
 
-            if (npcName.equalsIgnoreCase("AndryFox_14")) {
+            // 1. Forza lo sblocco dell'evento se WorldGuard o altri plugin lo avevano negato ai Non-OP
+            if (event.isCancelled()) {
+                event.setCancelled(false);
+            }
+
+            // 2. Legge il nome in modo infallibile (sia Custom Name che Name base)
+            String npcName = clicked.getCustomName();
+            if (npcName == null) npcName = clicked.getName();
+            if (npcName == null) return;
+
+            npcName = org.bukkit.ChatColor.stripColor(npcName).toLowerCase();
+            org.bukkit.entity.Player player = event.getPlayer();
+
+            // 3. Esegue l'apertura delle GUI con 1 Tick di ritardo
+            // Questo impedisce al client di chiudere istantaneamente il menu se l'evento originale era stato bloccato.
+            if (npcName.contains("andryfox")) {
                 event.setCancelled(true);
-                event.getPlayer().performCommand("p");
-            } else if (npcName.equalsIgnoreCase("Lista Build")) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> player.performCommand("p"), 1L);
+            } else if (npcName.contains("lista build")) {
                 event.setCancelled(true);
-                plugin.getGameManager().openCategoryMenu(event.getPlayer());
-            } else if (npcName.equalsIgnoreCase("Trova Errori")) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> plugin.getGameManager().openCategoryMenu(player), 1L);
+            } else if (npcName.contains("trova errori")) {
                 event.setCancelled(true);
-                event.getPlayer().performCommand("p errors");
-            } else if (npcName.equalsIgnoreCase("Guarda Build")) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> player.performCommand("p errors"), 1L);
+            } else if (npcName.contains("guarda build")) {
                 event.setCancelled(true);
-                event.getPlayer().performCommand("p view");
-            } else if (npcName.equalsIgnoreCase("/leave")) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> player.performCommand("p view"), 1L);
+            } else if (npcName.contains("/leave")) {
                 event.setCancelled(true);
-                event.getPlayer().performCommand("p leave");
+                Bukkit.getScheduler().runTaskLater(plugin, () -> player.performCommand("p leave"), 1L);
             }
         }
     }
