@@ -197,19 +197,10 @@ public class Listeners implements Listener {
     public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
+
         GameManager gm = plugin.getGameManager();
-
         if (gm.isLobbyWorld(player.getWorld())) { event.setCancelled(true); return; }
-
-        Block block = event.getBlock();
-        if (!block.getWorld().getName().equals("practice")) return;
-
-        // Il muro invisibile per i blocchi normali
-        if (!(block.getX() >= -3 && block.getX() <= 3 && block.getZ() >= -3 && block.getZ() <= 3 && block.getY() > 100)) {
-            event.setCancelled(true);
-            player.sendMessage("§cPuoi costruire solo nel riquadro nero!");
-            return;
-        }
+        if (!event.getBlock().getWorld().getName().equals("practice")) return;
 
         String state = gm.getState(player);
         if (!state.equals("PLAYING")) {
@@ -218,6 +209,7 @@ public class Listeners implements Listener {
             return;
         }
 
+        // Il controllo dei bordi lo fa già BlockFixes. Qui controlliamo solo la vittoria.
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (gm.checkBuildPerfect(player)) gm.handlePerfect(player);
         });
@@ -295,11 +287,6 @@ public class Listeners implements Listener {
                 event.setCancelled(true);
                 event.getPlayer().performCommand("p leave");
             }
-            // --- GESTIONE PAVIMENTO E CUSTOM BUILD ---
-            else if (npcName.equalsIgnoreCase("Gestione Arena") || npcName.equalsIgnoreCase("Impostazioni")) {
-                event.setCancelled(true);
-                plugin.getGameManager().openSettingsMenu(event.getPlayer());
-            }
         }
     }
 
@@ -315,64 +302,46 @@ public class Listeners implements Listener {
 
             String rawName = org.bukkit.ChatColor.stripColor(event.getCurrentItem().getItemMeta().getDisplayName());
 
-            // Se clicca una qualsiasi categoria (Base o Custom)
-            if (rawName.equals("FearGames") || rawName.equals("Mineplex") || plugin.getConfig().contains("custom_categories." + rawName)) {
+            // Se clicca una qualsiasi categoria (Base, Custom speciale o Custom creata dal config)
+            if (rawName.equals("FearGames") || rawName.equals("Mineplex") || rawName.equals("Custom") || plugin.getConfig().contains("custom_categories." + rawName)) {
                 plugin.getGameManager().openBuildMenu(player, 1, rawName);
             }
-            return;
         }
 
-        // 2. MENU: GESTIONE ARENA (Quello nuovo)
-        if (title.contains("Gestione Arena")) {
+        // 2. MENU: SCEGLI LA MODALITÀ (Nuovo Menu di Ingresso)
+        if (title.equals("§8Scegli la Modalità")) {
             event.setCancelled(true);
+            if (event.getCurrentItem() == null || !event.getCurrentItem().hasItemMeta()) return;
 
-            if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
-            if (!event.getCurrentItem().hasItemMeta() || !event.getCurrentItem().getItemMeta().hasDisplayName()) return;
+            String itemName = org.bukkit.ChatColor.stripColor(event.getCurrentItem().getItemMeta().getDisplayName());
 
-            String itemName = event.getCurrentItem().getItemMeta().getDisplayName();
+            org.bukkit.World practiceWorld = Bukkit.getWorld("practice");
+            Location arenaLoc = new Location(practiceWorld, 0.5, 101, 5.5, 180f, 35f);
+
+            if (itemName.contains("Costruttore")) {
+                player.setGameMode(org.bukkit.GameMode.CREATIVE);
+                player.getInventory().clear();
+
+                if (practiceWorld != null) {
+                    player.teleport(arenaLoc);
+                }
+
+                player.sendMessage("§aSei entrato nell'arena in modalità Costruttore!");
+            }
+            else if (itemName.contains("Giocatore")) {
+                player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                player.getInventory().clear();
+
+                if (practiceWorld != null) {
+                    player.teleport(arenaLoc);
+                    player.setAllowFlight(true);
+                    player.setFlying(false);
+                }
+
+                player.sendMessage("§eSei entrato nell'arena in modalità Giocatore! Clicca sul bordo in quarzo per ricominciare.");
+            }
             player.closeInventory();
-
-            if (itemName.contains("Cambia Modalità")) {
-                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                    player.getInventory().clear();
-                    player.sendMessage("§eModalità Sopravvivenza attivata! Inventario pulito.");
-                } else {
-                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
-                    player.sendMessage("§aModalità Creativa attivata!");
-                }
-            }
-            else if (itemName.contains("Custom Floor")) {
-                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-                    plugin.getGameManager().saveAndApplyCustomFloor(player);
-                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                } else {
-                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
-                    player.sendMessage("§eModalità Custom Floor! Piazza i blocchi e riapri questo menu per salvare.");
-                }
-            }
-            else if (itemName.contains("Ripristina Pavimento")) {
-                plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
-                plugin.saveConfig();
-                int buildId = plugin.getGameManager().getCurrentBuild(player);
-                if (buildId != -1) {
-                    plugin.getGameManager().generateFloor(player, buildId, plugin.getGameManager().getCurrentCategory(player));
-                    player.sendMessage("§aPavimento ripristinato alla normalità.");
-                }
-            }
-            else if (itemName.contains("Custom Build")) {
-                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-                    plugin.getGameManager().saveBuild(player, 999999, "Build Temporanea", "Custom");
-                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                    plugin.getGameManager().loadBuild(player, 999999, "Custom");
-                    player.sendMessage("§aBuild temporanea pronta!");
-                } else {
-                    plugin.getGameManager().forceReset(player);
-                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
-                    player.sendMessage("§eModalità Custom Build! Costruisci e riapri questo menu per testare.");
-                }
-            }
-            return; // Ferma il codice qui senza controllare gli altri menu
+            return;
         }
 
         // 3. MENU: LISTA DELLE MAPPE (- P. )
@@ -505,4 +474,72 @@ public class Listeners implements Listener {
             }
         }
     }
+
+    // 1. Permette di creare i cartelli speciali scrivendo semplicemente "Floor" o "Building" nella prima riga
+    @EventHandler
+    public void onSignChange(org.bukkit.event.block.SignChangeEvent event) {
+        org.bukkit.entity.Player player = event.getPlayer();
+        String line0 = event.getLine(0);
+
+        if (line0 == null) return;
+
+        if (line0.equalsIgnoreCase("Floor") || line0.equalsIgnoreCase("[Floor]")) {
+            if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
+                event.setLine(0, "§8[§bSpeedBuilders§8]");
+                event.setLine(1, "§9§lFloor");
+                event.setLine(2, "§7Clicca per");
+                event.setLine(3, "§7salvare");
+                player.sendMessage("§aCartello Floor creato con successo!");
+            }
+        }
+        else if (line0.equalsIgnoreCase("Building") || line0.equalsIgnoreCase("[Building]")) {
+            if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
+                event.setLine(0, "§8[§bSpeedBuilders§8]");
+                event.setLine(1, "§e§lBuilding");
+                event.setLine(2, "§7Clicca per");
+                event.setLine(3, "§7testare");
+                player.sendMessage("§aCartello Building creato con successo!");
+            }
+        }
+    }
+
+    // 2. Legge il Click destro sui cartelli ed esegue le azioni di salvataggio/test
+    @EventHandler
+    public void onSignClick(org.bukkit.event.player.PlayerInteractEvent event) {
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) return;
+
+        org.bukkit.block.Block b = event.getClickedBlock();
+        if (b == null) return;
+
+        if (b.getType() == org.bukkit.Material.SIGN_POST || b.getType() == org.bukkit.Material.WALL_SIGN) {
+            org.bukkit.block.Sign sign = (org.bukkit.block.Sign) b.getState();
+            String line1 = org.bukkit.ChatColor.stripColor(sign.getLine(1)).trim();
+
+            org.bukkit.entity.Player player = event.getPlayer();
+
+            if (line1.equalsIgnoreCase("Floor")) {
+                event.setCancelled(true);
+
+                // Salva il floor senza rimuovere o resettare i blocchi, li copia e basta
+                plugin.getGameManager().saveAndApplyCustomFloor(player);
+                player.sendMessage("§a§l[!] §aPavimento custom salvato! §7I blocchi sono rimasti al loro posto.");
+            }
+            else if (line1.equalsIgnoreCase("Building")) {
+                event.setCancelled(true);
+
+                // 1. Salva la build solo nella memoria RAM usando la categoria fittizia "TempTest"
+                plugin.getGameManager().saveBuild(player, 1, "Test in RAM", "TempTest");
+
+                // 2. Resetta l'area visiva (rimuove i blocchi dalla visuale)
+                plugin.getGameManager().forceReset(player);
+
+                // 3. Mette in survival e carica la build dalla memoria
+                player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                plugin.getGameManager().loadBuild(player, 1, "TempTest");
+
+                player.sendMessage("§e§l[!] §eInizio del test... (Nessun file modificato)");
+            }
+        }
+    }
+
 }

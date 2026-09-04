@@ -185,20 +185,35 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // Gestisce i blocchi rotti in modo personalizzato: blocca il drop vanilla e usa il Normalizzatore
+    // Gestisce i blocchi rotti: blocca il drop vanilla, usa il Normalizzatore e PROTEGGE L'ISOLA
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
-        if (player.getWorld().getName().equals("practice")) {
+        if (!player.getWorld().getName().equals("practice")) return;
+
+        Block b = event.getBlock();
+        int x = b.getX();
+        int y = b.getY();
+        int z = b.getZ();
+
+        // Calcolo dell'area di gioco (X/Z da -3 a 3. Pavimento a 100. Costruzione da 101 in su)
+        boolean isBuildArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y > 100);
+        boolean isFloorArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y == 100);
+
+        if (player.getGameMode() == GameMode.SURVIVAL) {
+            // In Survival blocca immediatamente qualsiasi rottura fuori dal cubo di costruzione
+            if (!isBuildArea) {
+                event.setCancelled(true);
+                return;
+            }
+
+            // Se la rottura è valida e sta giocando, gestisce il drop personalizzato
             GameManager gm = plugin.getGameManager();
             if (gm.getState(player).equals("PLAYING")) {
                 event.setDropItems(false);
-
-                Block b = event.getBlock();
                 Material type = b.getType();
                 byte data = b.getData();
 
-                // <- FIX: Pulisce la cima/base di fiori alti e porte e usa sempre il dato della base per ridarti l'item corretto
                 if (type == Material.DOUBLE_PLANT || type.name().contains("DOOR")) {
                     Block top = (data >= 8) ? b : b.getRelative(BlockFace.UP);
                     Block bottom = (data >= 8) ? b.getRelative(BlockFace.DOWN) : b;
@@ -220,9 +235,109 @@ public class BlockFixes implements Listener {
                 if (toGive != null) {
                     player.getInventory().addItem(toGive);
                 }
-
                 triggerPerfectCheck(player);
             }
         }
+        else if (player.getGameMode() == GameMode.CREATIVE) {
+            // In Creativa blocca la rottura dell'isola, a meno che non sia accovacciato
+            if (!isBuildArea && !isFloorArea) {
+                if (!player.isSneaking()) {
+                    event.setCancelled(true);
+                    player.sendMessage("§cShift+Click per rompere l'isola in creativa!");
+                }
+            }
+        }
     }
+
+    // Protegge il piazzamento dei blocchi
+    @EventHandler
+    public void onBlockPlace(org.bukkit.event.block.BlockPlaceEvent event) {
+        org.bukkit.entity.Player player = event.getPlayer();
+        if (!player.getWorld().getName().equals("practice")) return;
+
+        Block b = event.getBlock();
+        int x = b.getX();
+        int y = b.getY();
+        int z = b.getZ();
+
+        boolean isBuildArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y > 100);
+        boolean isFloorArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y == 100);
+
+        if (player.getGameMode() == GameMode.SURVIVAL) {
+            // Può piazzare solo nell'aria sopra il pavimento
+            if (!isBuildArea) {
+                event.setCancelled(true);
+            }
+        }
+        else if (player.getGameMode() == GameMode.CREATIVE) {
+            // In Creativa può piazzare nell'area build o modificare il pavimento. Resto dell'isola blindato.
+            if (!isBuildArea && !isFloorArea) {
+                if (!player.isSneaking()) {
+                    event.setCancelled(true);
+                    player.sendMessage("§cShift+Click per piazzare blocchi sull'isola in creativa!");
+                }
+            }
+        }
+    }
+
+    // 1. Blocca l'uso di oggetti pericolosi (Secchi, Accendino, Pozioni, Minecart TNT, Farina d'ossa)
+    @EventHandler
+    public void onBannedItemsUse(PlayerInteractEvent event) {
+        if (!event.getPlayer().getWorld().getName().equals("practice")) return;
+
+        ItemStack item = event.getItem();
+        if (item == null) return;
+
+        Material t = item.getType();
+
+        // Lista di oggetti disabilitati
+        if (t == Material.FLINT_AND_STEEL ||
+                t == Material.EXPLOSIVE_MINECART ||
+                t == Material.MONSTER_EGG ||
+                t.name().contains("POTION") ||
+                t == Material.LAVA_BUCKET ||
+                t == Material.WATER_BUCKET ||
+                t == Material.ENDER_PEARL ||
+                t == Material.EYE_OF_ENDER ||
+                t == Material.FIREWORK) {
+
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§cQuesto oggetto è disabilitato per motivi di sicurezza!");
+            return;
+        }
+
+        // Blocca specificamente la Farina d'Ossa (INK_SACK con data 15) per evitare crescite istantanee
+        if (t == Material.INK_SACK && item.getDurability() == 15) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§cLa farina d'ossa è disabilitata!");
+        }
+    }
+
+    // 2. Impedisce fisicamente il piazzamento del blocco di TNT
+    @EventHandler
+    public void onTNTPlace(org.bukkit.event.block.BlockPlaceEvent event) {
+        if (event.getPlayer().getWorld().getName().equals("practice")) {
+            if (event.getBlock().getType() == Material.TNT) {
+                event.setCancelled(true);
+                event.getPlayer().sendMessage("§cLa TNT non può essere piazzata!");
+            }
+        }
+    }
+
+    // 3. Blocca la creazione di portali del Nether e dell'End
+    @EventHandler
+    public void onPortalCreate(org.bukkit.event.world.PortalCreateEvent event) {
+        if (event.getWorld().getName().equals("practice")) {
+            event.setCancelled(true);
+        }
+    }
+
+    // 4. Blocca l'accensione di fuochi (anche accidentali) o la loro propagazione
+    @EventHandler
+    public void onFireIgnite(org.bukkit.event.block.BlockIgniteEvent event) {
+        if (event.getBlock().getWorld().getName().equals("practice")) {
+            event.setCancelled(true);
+        }
+    }
+
 }

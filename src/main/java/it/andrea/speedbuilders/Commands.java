@@ -127,18 +127,8 @@ public class Commands implements CommandExecutor {
                 }
             }
 
-            World practiceWorld = Bukkit.getWorld("practice");
-            if (practiceWorld == null) {
-                player.sendMessage("§cErrore: Il mondo 'practice' non esiste.");
-                return true;
-            }
-            gm.resetPlayer(player);
-            player.teleport(new Location(practiceWorld, 0.5, 101, 5.5, 180f, 35f));
-            if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) {
-                player.setAllowFlight(true);
-                player.setFlying(false);
-            }
-            player.sendMessage("§aArea pulita! Clicca sul bordo in quarzo per ricominciare.");
+            // Apre il nuovo menu invece di teletrasportare alla cieca
+            gm.openGamemodeMenu(player);
             return true;
         }
 
@@ -312,6 +302,12 @@ public class Commands implements CommandExecutor {
                     npc.setInvulnerable(true);
                     npc.setCollidable(false);
                     player.sendMessage("§aNPC Exit creato alla tua posizione!");
+                    break;
+                case "resetfloor":
+                    if (!player.isOp()) return true;
+                    // Questo richiama il metodo per ripristinare l'erba
+                    plugin.getGameManager().resetCustomFloor(player);
+                    player.sendMessage("§aPavimento ripristinato a quello di default!");
                     break;
                 default:
                     player.sendMessage("§cUsa: /map per vedere la lista dei comandi");

@@ -48,7 +48,8 @@ public class GameManager {
     public void setContinuousRandom(Player p, boolean val) { if (val) continuousRandom.put(p, true); else continuousRandom.remove(p); }
     public boolean isContinuousRandom(Player p) { return continuousRandom.getOrDefault(p, false); }
     public boolean hasActiveSearch(Player p) { return activeSearch.containsKey(p); }
-
+    // Configurazione fantasma per i test, non viene mai scritta su file
+    private final org.bukkit.configuration.file.FileConfiguration memoryConfig = new org.bukkit.configuration.file.YamlConfiguration();
 
     public GameManager(Main plugin) {
         this.plugin = plugin;
@@ -259,7 +260,7 @@ public class GameManager {
 
         List<String> blocksData = new ArrayList<>();
         for (int x = -3; x <= 3; x++) {
-            for (int y = 0; y <= 32; y++) {
+            for (int y = 1; y <= 32; y++) {
                 for (int z = -3; z <= 3; z++) {
                     Block block = world.getBlockAt(x, 100 + y, z);
                     if (block.getType() != Material.AIR) {
@@ -283,11 +284,18 @@ public class GameManager {
         config.set("builds." + id + ".name", buildName);
         config.set("builds." + id + ".blocks", blocksData);
         config.set("builds." + id + ".hotbar", hotbar);
-        try {
-            config.save(new java.io.File(plugin.getDataFolder(), category.toLowerCase() + "_builds.yml"));
-        } catch (Exception e) { e.printStackTrace(); }
 
-        player.sendMessage("§aBuild '" + buildName + "' salvata in " + category + " (ID: " + id + ")!");
+        // Salva su file SOLO se non è un test temporaneo
+        if (!category.equalsIgnoreCase("TempTest")) {
+            try {
+                config.save(new java.io.File(plugin.getDataFolder(), category.toLowerCase() + "_builds.yml"));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            player.sendMessage("§aBuild '" + buildName + "' salvata in " + category + " (ID: " + id + ")!");
+        } else {
+            player.sendMessage("§eBuild memorizzata in RAM per il test!");
+        }
     }
 
     @SuppressWarnings("deprecation")
@@ -506,13 +514,16 @@ public class GameManager {
 
     public FileConfiguration getBuildConfig(String category) {
         if (category == null) return plugin.getFearConfig();
+
+        // <-- INIZIO MODIFICA: Se è il test, restituisce la RAM
+        if (category.equalsIgnoreCase("TempTest")) return memoryConfig;
+        // <-- FINE MODIFICA
+
         if (category.equalsIgnoreCase("Mineplex")) return plugin.getMineplexConfig();
         if (category.equalsIgnoreCase("FearGames")) return plugin.getFearConfig();
 
-        // Se la categoria custom è già in memoria, usa quella
         if (dynamicConfigs.containsKey(category)) return dynamicConfigs.get(category);
 
-        // Altrimenti, crea un nuovo file (es. mushmc_builds.yml)
         java.io.File file = new java.io.File(plugin.getDataFolder(), category.toLowerCase() + "_builds.yml");
         if (!file.exists()) {
             try { file.createNewFile(); } catch (Exception ignored) {}
@@ -1127,41 +1138,26 @@ public class GameManager {
         }
     }
 
-    public void openSettingsMenu(Player player) {
-        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 27, "§8Gestione Arena");
+    public void openGamemodeMenu(org.bukkit.entity.Player player) {
+        org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 27, "§8Scegli la Modalità");
 
-        ItemStack gm = new ItemStack(Material.DIAMOND_PICKAXE);
-        org.bukkit.inventory.meta.ItemMeta gmMeta = gm.getItemMeta();
-        gmMeta.setDisplayName("§b§lCambia Modalità");
-        gmMeta.setLore(java.util.Arrays.asList("§7Passa da Creativa a Sopravvivenza", "§7e viceversa."));
-        gm.setItemMeta(gmMeta);
+        org.bukkit.inventory.ItemStack creative = new org.bukkit.inventory.ItemStack(Material.DIAMOND_PICKAXE);
+        org.bukkit.inventory.meta.ItemMeta cMeta = creative.getItemMeta();
+        cMeta.setDisplayName("§b§lCostruttore (Creativa)");
+        cMeta.setLore(java.util.Arrays.asList("§7Entra nell'arena in Creativa", "§7per creare mappe o pavimenti."));
+        creative.setItemMeta(cMeta);
 
-        ItemStack cFloor = new ItemStack(Material.GRASS);
-        org.bukkit.inventory.meta.ItemMeta cFloorMeta = cFloor.getItemMeta();
-        cFloorMeta.setDisplayName("§a§lCustom Floor");
-        cFloorMeta.setLore(java.util.Arrays.asList("§7Modifica e salva in modo permanente", "§7il pavimento della tua arena."));
-        cFloor.setItemMeta(cFloorMeta);
+        org.bukkit.inventory.ItemStack survival = new org.bukkit.inventory.ItemStack(Material.APPLE);
+        org.bukkit.inventory.meta.ItemMeta sMeta = survival.getItemMeta();
+        sMeta.setDisplayName("§a§lGiocatore (Sopravvivenza)");
+        sMeta.setLore(java.util.Arrays.asList("§7Entra nell'arena in Sopravvivenza", "§7per giocare e testare le mappe."));
+        survival.setItemMeta(sMeta);
 
-        ItemStack rFloor = new ItemStack(Material.STAINED_GLASS, 1, (byte) 14);
-        org.bukkit.inventory.meta.ItemMeta rFloorMeta = rFloor.getItemMeta();
-        rFloorMeta.setDisplayName("§c§lRipristina Pavimento");
-        rFloorMeta.setLore(java.util.Arrays.asList("§7Cancella il pavimento custom e", "§7torna a quello originale."));
-        rFloor.setItemMeta(rFloorMeta);
+        inv.setItem(11, creative);
+        inv.setItem(15, survival);
 
-        ItemStack cBuild = new ItemStack(Material.BRICK);
-        org.bukkit.inventory.meta.ItemMeta cBuildMeta = cBuild.getItemMeta();
-        cBuildMeta.setDisplayName("§e§lCustom Build");
-        cBuildMeta.setLore(java.util.Arrays.asList("§7Costruisci e testa una", "§7build temporanea."));
-        cBuild.setItemMeta(cBuildMeta);
-
-        // Posizionati al centro
-        inv.setItem(10, gm);
-        inv.setItem(12, cFloor);
-        inv.setItem(14, rFloor);
-        inv.setItem(16, cBuild);
-
-        // Vetro nero di contorno
-        ItemStack filler = new ItemStack(Material.STAINED_GLASS_PANE, 1, (byte) 15);
+        // Contorno
+        org.bukkit.inventory.ItemStack filler = new org.bukkit.inventory.ItemStack(Material.STAINED_GLASS_PANE, 1, (byte) 15);
         org.bukkit.inventory.meta.ItemMeta fillerMeta = filler.getItemMeta();
         fillerMeta.setDisplayName(" ");
         filler.setItemMeta(fillerMeta);
@@ -1173,6 +1169,28 @@ public class GameManager {
         }
 
         player.openInventory(inv);
+    }
+
+    public void resetCustomFloor(Player player) {
+        // Disattiva la modalità custom floor nel config
+        plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
+        plugin.saveConfig();
+
+        int buildId = getCurrentBuild(player);
+        if (buildId != -1) {
+            // Se c'è una build caricata, rigenera il pavimento originale di quella specifica mappa
+            generateFloor(player, buildId, getCurrentCategory(player));
+        } else {
+            // Se l'arena è vuota, rimette l'erba standard su tutto il quadrato 7x7
+            org.bukkit.World w = player.getWorld();
+            for (int x = -3; x <= 3; x++) {
+                for (int z = -3; z <= 3; z++) {
+                    org.bukkit.block.Block b = w.getBlockAt(x, 100, z);
+                    b.setType(Material.GRASS);
+                    b.setData((byte) 0);
+                }
+            }
+        }
     }
 
 }
