@@ -37,6 +37,7 @@ public class GameManager {
     private final HashMap<Player, Boolean> continuousRandom = new HashMap<>();
     private final HashMap<Player, Boolean> awaitingCategory = new HashMap<>();
     private final HashMap<String, FileConfiguration> dynamicConfigs = new HashMap<>();
+    private final HashMap<Player, String> timerModes = new HashMap<>();
 
     public void setAwaitingCategory(Player p, boolean val) { if (val) awaitingCategory.put(p, true); else awaitingCategory.remove(p); }
     public boolean isAwaitingCategory(Player p) { return awaitingCategory.containsKey(p); }
@@ -53,6 +54,22 @@ public class GameManager {
 
     public GameManager(Main plugin) {
         this.plugin = plugin;
+    }
+
+    public String getTimerMode(Player p) { return timerModes.getOrDefault(p, "FIRST_BLOCK"); }
+    public void setTimerMode(Player p, String mode) { timerModes.put(p, mode); }
+
+    public void readyBuild(Player player) {
+        int buildId = getCurrentBuild(player);
+        if (buildId == -1) return;
+
+        if (getTimerMode(player).equals("FIRST_BLOCK")) {
+            giveBuildItems(player, buildId);
+            setState(player, "WAITING_FIRST_BLOCK");
+            player.sendTitle("", "§ePiazza un blocco per iniziare!", 5, 40, 10);
+        } else {
+            startCountdown(player, 3);
+        }
     }
 
     public String getState(Player player) { return playerStates.getOrDefault(player, "IDLE"); }
@@ -312,10 +329,6 @@ public class GameManager {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
 
-        // Spegne il Custom Floor per caricare il vero pavimento della mappa
-        plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
-        plugin.saveConfig();
-
         currentCategory.put(player, category);
         FileConfiguration config = getBuildConfig(category);
 
@@ -444,7 +457,7 @@ public class GameManager {
         countdownTasks.put(player, task);
     }
 
-    private void startTimer(Player player) {
+    public void startTimer(Player player) {
         activeTimers.put(player, System.currentTimeMillis());
         int buildId = currentBuild.getOrDefault(player, -1);
         String cat = getCurrentCategory(player);
@@ -516,7 +529,7 @@ public class GameManager {
                             if (randomId != -1) nextBuildId = randomId;
                         }
                         loadBuild(player, nextBuildId, cat);
-                        startCountdown(player, 3);
+                        readyBuild(player); // <-- MODIFICATO QUI
                     }
                 }
             }.runTaskLater(plugin, 50L);

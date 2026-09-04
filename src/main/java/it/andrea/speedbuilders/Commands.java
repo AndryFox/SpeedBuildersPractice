@@ -127,8 +127,21 @@ public class Commands implements CommandExecutor {
                 }
             }
 
-            // Apre il nuovo menu invece di teletrasportare alla cieca
-            gm.openGamemodeMenu(player);
+            org.bukkit.World practiceWorld = Bukkit.getWorld("practice");
+            if (practiceWorld == null) {
+                player.sendMessage("§cErrore: Il mondo 'practice' non esiste.");
+                return true;
+            }
+            gm.resetPlayer(player);
+            player.teleport(new Location(practiceWorld, 0.5, 101, 5.5, 180f, 35f));
+
+            // Imposta in Survival direttamente e pulisce l'inventario
+            player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+            player.getInventory().clear();
+            player.setAllowFlight(true);
+            player.setFlying(false);
+
+            player.sendMessage("§aSei entrato nell'arena! Usa l'NPC per scegliere una mappa.");
             return true;
         }
 

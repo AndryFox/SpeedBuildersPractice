@@ -182,7 +182,7 @@ public class Listeners implements Listener {
                             if (buildId != -1) {
                                 gm.forceReset(player);
                                 gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
-                                gm.startCountdown(player, 3);
+                                gm.readyBuild(player); // <-- MODIFICATO QUI
                             } else {
                                 player.sendMessage("§cDevi prima caricare una build con /map load <id>!");
                             }
@@ -206,17 +206,17 @@ public class Listeners implements Listener {
 
         String state = gm.getState(player);
 
-        // Se NON sta giocando...
-        if (!state.equals("PLAYING")) {
-            // Se ha la creativa, lo lasciamo costruire liberamente senza fastidi
+        // Se eravamo in attesa, il primo blocco avvia il timer!
+        if (state.equals("WAITING_FIRST_BLOCK")) {
+            gm.setState(player, "PLAYING");
+            gm.startTimer(player);
+        } else if (!state.equals("PLAYING")) {
             if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
-
             event.setCancelled(true);
             player.sendMessage(state.equals("COUNTDOWN") ? "§cAttendi la fine del countdown!" : "§cClicca sul pavimento nero per iniziare!");
             return;
         }
 
-        // Se sta GIOCANDO (indipendentemente se è Survival o Creativa), controlliamo la vittoria
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (gm.checkBuildPerfect(player)) gm.handlePerfect(player);
         });
@@ -328,45 +328,7 @@ public class Listeners implements Listener {
             }
         }
 
-        // 2. MENU: SCEGLI LA MODALITÀ (Nuovo Menu di Ingresso)
-        if (title.equals("§8Scegli la Modalità")) {
-            event.setCancelled(true);
-            if (event.getCurrentItem() == null || !event.getCurrentItem().hasItemMeta()) return;
-
-            String itemName = org.bukkit.ChatColor.stripColor(event.getCurrentItem().getItemMeta().getDisplayName());
-
-            org.bukkit.World practiceWorld = Bukkit.getWorld("practice");
-            Location arenaLoc = new Location(practiceWorld, 0.5, 101, 5.5, 180f, 35f);
-
-            // Chiude l'inventario prima del teletrasporto per evitare bug visivi
-            player.closeInventory();
-
-            if (itemName.contains("Costruttore")) {
-                if (practiceWorld != null) player.teleport(arenaLoc);
-                player.getInventory().clear();
-
-                // Ritardo di 2 tick per evitare che i plugin dei mondi forzino la Survival ai non-OP
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
-                    player.sendMessage("§aSei entrato nell'arena in modalità Costruttore!");
-                }, 2L);
-            }
-            else if (itemName.contains("Giocatore")) {
-                if (practiceWorld != null) player.teleport(arenaLoc);
-                player.getInventory().clear();
-
-                // Ritardo di 2 tick anche qui per sicurezza
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                    player.setAllowFlight(true);
-                    player.setFlying(false);
-                    player.sendMessage("§eSei entrato nell'arena in modalità Giocatore! Clicca sul bordo in quarzo per ricominciare.");
-                }, 2L);
-            }
-            return;
-        }
-
-        // 3. MENU: LISTA DELLE MAPPE (- P. )
+        // 2. MENU: LISTA DELLE MAPPE (- P. )
         if (title.contains("- P. ")) {
             event.setCancelled(true);
             if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
@@ -428,9 +390,13 @@ public class Listeners implements Listener {
                     player.sendMessage("§eModalità Random Singola attivata!");
                 }
 
+                // Disattiva il Custom Floor solo quando scegli volontariamente dal menu
+                plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
+                plugin.saveConfig();
+
                 gm.forceReset(player);
                 gm.loadBuild(player, randomId, category);
-                gm.startCountdown(player, 6);
+                gm.readyBuild(player);
                 return;
             }
 
@@ -451,9 +417,13 @@ public class Listeners implements Listener {
 
                     gm.setContinuousRandom(player, false);
 
+                    // Disattiva il Custom Floor solo quando scegli volontariamente dal menu
+                    plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
+                    plugin.saveConfig();
+
                     gm.forceReset(player);
                     gm.loadBuild(player, id, category);
-                    gm.startCountdown(player, 6);
+                    gm.readyBuild(player);
                 } catch (Exception ignored) {}
             }
         }
@@ -497,63 +467,91 @@ public class Listeners implements Listener {
         }
     }
 
-    // 1. Permette di creare i cartelli speciali scrivendo semplicemente "Floor" o "Building" nella prima riga
     @EventHandler
     public void onSignChange(org.bukkit.event.block.SignChangeEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
         String line0 = event.getLine(0);
-
         if (line0 == null) return;
 
         if (line0.equalsIgnoreCase("Floor") || line0.equalsIgnoreCase("[Floor]")) {
             if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
-                event.setLine(0, "");
+                event.setLine(0, "§8[§bSpeedBuilders§8]");
                 event.setLine(1, "§9§lFloor");
                 event.setLine(2, "");
-                event.setLine(3, "Raymano never dies");
-                player.sendMessage("§aCartello Floor creato con successo!");
+                event.setLine(3, "");
             }
         }
         else if (line0.equalsIgnoreCase("Building") || line0.equalsIgnoreCase("[Building]")) {
             if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
-                event.setLine(0, "");
+                event.setLine(0, "§8[§bSpeedBuilders§8]");
                 event.setLine(1, "§e§lBuilding");
                 event.setLine(2, "");
                 event.setLine(3, "");
-                player.sendMessage("§aCartello Building creato con successo!");
+            }
+        }
+        else if (line0.equalsIgnoreCase("Timer") || line0.equalsIgnoreCase("[Timer]")) {
+            if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
+                event.setLine(0, "§8[§bSpeedBuilders§8]");
+                event.setLine(1, "§c§lTimer");
+                event.setLine(2, "");
+                event.setLine(3, "");
+            }
+        }
+        else if (line0.equalsIgnoreCase("Mode") || line0.equalsIgnoreCase("[Mode]")) {
+            if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
+                event.setLine(0, "§8[§bSpeedBuilders§8]");
+                event.setLine(1, "§a§lModalità");
+                event.setLine(2, "");
+                event.setLine(3, "");
             }
         }
     }
 
-    // 2. Legge il Click destro sui cartelli ed esegue le azioni di salvataggio/test
     @EventHandler
     public void onSignClick(org.bukkit.event.player.PlayerInteractEvent event) {
         if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) return;
-
         org.bukkit.block.Block b = event.getClickedBlock();
         if (b == null) return;
 
         if (b.getType() == org.bukkit.Material.SIGN_POST || b.getType() == org.bukkit.Material.WALL_SIGN) {
             org.bukkit.block.Sign sign = (org.bukkit.block.Sign) b.getState();
             String line1 = org.bukkit.ChatColor.stripColor(sign.getLine(1)).trim();
-
             org.bukkit.entity.Player player = event.getPlayer();
 
             if (line1.equalsIgnoreCase("Floor")) {
                 event.setCancelled(true);
                 plugin.getGameManager().saveAndApplyCustomFloor(player);
-                // Totalmente silenzioso: nessun messaggio o suono.
             }
             else if (line1.equalsIgnoreCase("Building")) {
                 event.setCancelled(true);
-
                 plugin.getGameManager().saveBuild(player, 1, "Test in RAM", "TempTest");
                 plugin.getGameManager().forceReset(player);
-
                 player.setGameMode(org.bukkit.GameMode.SURVIVAL);
                 plugin.getGameManager().loadBuild(player, 1, "TempTest");
-
                 player.sendMessage("§e§l[!] §eInizio del test... (Nessun file modificato)");
+            }
+            else if (line1.equalsIgnoreCase("Timer")) {
+                event.setCancelled(true);
+                String current = plugin.getGameManager().getTimerMode(player);
+                if (current.equals("FIRST_BLOCK")) {
+                    plugin.getGameManager().setTimerMode(player, "COUNTDOWN");
+                    player.sendMessage("§a§l[!] §aModalità Timer: §eCOUNTDOWN");
+                } else {
+                    plugin.getGameManager().setTimerMode(player, "FIRST_BLOCK");
+                    player.sendMessage("§a§l[!] §aModalità Timer: §ePRIMO BLOCCO");
+                }
+            }
+            else if (line1.equalsIgnoreCase("Modalità")) {
+                event.setCancelled(true);
+                if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                    player.setAllowFlight(true);
+                    player.setFlying(false);
+                    player.sendMessage("§e§l[!] §eModalità Giocatore (Sopravvivenza) attivata!");
+                } else {
+                    player.setGameMode(org.bukkit.GameMode.CREATIVE);
+                    player.sendMessage("§a§l[!] §aModalità Costruttore (Creativa) attivata!");
+                }
             }
         }
     }

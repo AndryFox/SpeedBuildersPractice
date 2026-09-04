@@ -56,7 +56,13 @@ public class MobManager implements Listener {
             event.setCancelled(true);
 
             if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-                if (!plugin.getGameManager().getState(player).equals("PLAYING")) return;
+                String state = plugin.getGameManager().getState(player);
+                if (state.equals("WAITING_FIRST_BLOCK")) {
+                    plugin.getGameManager().setState(player, "PLAYING");
+                    plugin.getGameManager().startTimer(player);
+                } else if (!state.equals("PLAYING")) {
+                    return;
+                }
 
                 org.bukkit.block.Block clicked = event.getClickedBlock();
                 org.bukkit.block.Block target = clicked.getRelative(event.getBlockFace());
