@@ -196,20 +196,27 @@ public class Listeners implements Listener {
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
-
         GameManager gm = plugin.getGameManager();
-        if (gm.isLobbyWorld(player.getWorld())) { event.setCancelled(true); return; }
+
+        if (gm.isLobbyWorld(player.getWorld())) {
+            if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) event.setCancelled(true);
+            return;
+        }
         if (!event.getBlock().getWorld().getName().equals("practice")) return;
 
         String state = gm.getState(player);
+
+        // Se NON sta giocando...
         if (!state.equals("PLAYING")) {
+            // Se ha la creativa, lo lasciamo costruire liberamente senza fastidi
+            if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
+
             event.setCancelled(true);
             player.sendMessage(state.equals("COUNTDOWN") ? "§cAttendi la fine del countdown!" : "§cClicca sul pavimento nero per iniziare!");
             return;
         }
 
-        // Il controllo dei bordi lo fa già BlockFixes. Qui controlliamo solo la vittoria.
+        // Se sta GIOCANDO (indipendentemente se è Survival o Creativa), controlliamo la vittoria
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (gm.checkBuildPerfect(player)) gm.handlePerfect(player);
         });
@@ -269,23 +276,21 @@ public class Listeners implements Listener {
 
         org.bukkit.entity.Entity clicked = event.getRightClicked();
 
-        if (clicked.hasMetadata("NPC")) {
+        String rawName = clicked.getCustomName();
+        if (rawName == null) rawName = clicked.getName();
+        if (rawName == null) return;
 
-            // 1. Forza lo sblocco dell'evento se WorldGuard o altri plugin lo avevano negato ai Non-OP
+        String npcName = org.bukkit.ChatColor.stripColor(rawName).toLowerCase();
+
+        // Aggiunto il fallback di sicurezza: cattura il click anche se Citizens non ha ancora messo i metadata
+        if (clicked.hasMetadata("NPC") || npcName.contains("lista build") || npcName.contains("andryfox") || npcName.contains("trova errori") || npcName.contains("guarda build") || npcName.contains("/leave")) {
+
             if (event.isCancelled()) {
                 event.setCancelled(false);
             }
 
-            // 2. Legge il nome in modo infallibile (sia Custom Name che Name base)
-            String npcName = clicked.getCustomName();
-            if (npcName == null) npcName = clicked.getName();
-            if (npcName == null) return;
-
-            npcName = org.bukkit.ChatColor.stripColor(npcName).toLowerCase();
             org.bukkit.entity.Player player = event.getPlayer();
 
-            // 3. Esegue l'apertura delle GUI con 1 Tick di ritardo
-            // Questo impedisce al client di chiudere istantaneamente il menu se l'evento originale era stato bloccato.
             if (npcName.contains("andryfox")) {
                 event.setCancelled(true);
                 Bukkit.getScheduler().runTaskLater(plugin, () -> player.performCommand("p"), 1L);
@@ -502,19 +507,19 @@ public class Listeners implements Listener {
 
         if (line0.equalsIgnoreCase("Floor") || line0.equalsIgnoreCase("[Floor]")) {
             if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
-                event.setLine(0, "§8[§bSpeedBuilders§8]");
+                event.setLine(0, "");
                 event.setLine(1, "§9§lFloor");
-                event.setLine(2, "§7Clicca per");
-                event.setLine(3, "§7salvare");
+                event.setLine(2, "");
+                event.setLine(3, "Raymano never dies");
                 player.sendMessage("§aCartello Floor creato con successo!");
             }
         }
         else if (line0.equalsIgnoreCase("Building") || line0.equalsIgnoreCase("[Building]")) {
             if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
-                event.setLine(0, "§8[§bSpeedBuilders§8]");
+                event.setLine(0, "");
                 event.setLine(1, "§e§lBuilding");
-                event.setLine(2, "§7Clicca per");
-                event.setLine(3, "§7testare");
+                event.setLine(2, "");
+                event.setLine(3, "");
                 player.sendMessage("§aCartello Building creato con successo!");
             }
         }
@@ -536,21 +541,15 @@ public class Listeners implements Listener {
 
             if (line1.equalsIgnoreCase("Floor")) {
                 event.setCancelled(true);
-
-                // Salva il floor senza rimuovere o resettare i blocchi, li copia e basta
                 plugin.getGameManager().saveAndApplyCustomFloor(player);
-                player.sendMessage("§a§l[!] §aPavimento custom salvato! §7I blocchi sono rimasti al loro posto.");
+                // Totalmente silenzioso: nessun messaggio o suono.
             }
             else if (line1.equalsIgnoreCase("Building")) {
                 event.setCancelled(true);
 
-                // 1. Salva la build solo nella memoria RAM usando la categoria fittizia "TempTest"
                 plugin.getGameManager().saveBuild(player, 1, "Test in RAM", "TempTest");
-
-                // 2. Resetta l'area visiva (rimuove i blocchi dalla visuale)
                 plugin.getGameManager().forceReset(player);
 
-                // 3. Mette in survival e carica la build dalla memoria
                 player.setGameMode(org.bukkit.GameMode.SURVIVAL);
                 plugin.getGameManager().loadBuild(player, 1, "TempTest");
 

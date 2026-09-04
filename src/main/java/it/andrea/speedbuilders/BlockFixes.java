@@ -169,10 +169,16 @@ public class BlockFixes implements Listener {
 
     // --- NUOVI FIX AGGIUNTI DA QUI IN POI ---
 
-    // Blocca definitivamente l'apertura delle interfacce per poter piazzare blocchi (shiftando) su incudini, hopper ecc.
+    // Blocca l'apertura delle interfacce fisiche per poter piazzare blocchi (shiftando), ma LASCIA APRIRE I MENU!
     @EventHandler
     public void onInventoryOpen(InventoryOpenEvent event) {
         if (event.getPlayer().getWorld().getName().equals("practice") && !event.getPlayer().hasPermission("speedbuilders.admin")) {
+
+            // SE L'INVENTARIO È VIRTUALE (Come i nostri menu che hanno holder = null), FALLO PASSARE!
+            if (event.getInventory().getHolder() == null) {
+                return;
+            }
+
             org.bukkit.event.inventory.InventoryType type = event.getInventory().getType();
             if (type == org.bukkit.event.inventory.InventoryType.ANVIL ||
                     type == org.bukkit.event.inventory.InventoryType.HOPPER ||
@@ -186,7 +192,7 @@ public class BlockFixes implements Listener {
     }
 
     // Gestisce i blocchi rotti: blocca il drop vanilla, usa il Normalizzatore e PROTEGGE L'ISOLA
-    @EventHandler
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
     public void onBlockBreak(BlockBreakEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
         if (!player.getWorld().getName().equals("practice")) return;
@@ -196,18 +202,15 @@ public class BlockFixes implements Listener {
         int y = b.getY();
         int z = b.getZ();
 
-        // Calcolo dell'area di gioco (X/Z da -3 a 3. Pavimento a 100. Costruzione da 101 in su)
         boolean isBuildArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y > 100);
         boolean isFloorArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y == 100);
 
         if (player.getGameMode() == GameMode.SURVIVAL) {
-            // In Survival blocca immediatamente qualsiasi rottura fuori dal cubo di costruzione
             if (!isBuildArea) {
                 event.setCancelled(true);
                 return;
             }
 
-            // Se la rottura è valida e sta giocando, gestisce il drop personalizzato
             GameManager gm = plugin.getGameManager();
             if (gm.getState(player).equals("PLAYING")) {
                 event.setDropItems(false);
@@ -217,24 +220,19 @@ public class BlockFixes implements Listener {
                 if (type == Material.DOUBLE_PLANT || type.name().contains("DOOR")) {
                     Block top = (data >= 8) ? b : b.getRelative(BlockFace.UP);
                     Block bottom = (data >= 8) ? b.getRelative(BlockFace.DOWN) : b;
-
                     byte bottomData = bottom.getData();
 
                     if (top.getType() == type) top.setType(Material.AIR);
                     if (bottom.getType() == type) bottom.setType(Material.AIR);
 
                     ItemStack toGive = ItemUtils.normalizeItem(type, bottomData, gm.getCurrentCategory(player));
-                    if (toGive != null) {
-                        player.getInventory().addItem(toGive);
-                    }
+                    if (toGive != null) player.getInventory().addItem(toGive);
                     triggerPerfectCheck(player);
                     return;
                 }
 
                 ItemStack toGive = ItemUtils.normalizeItem(type, data, gm.getCurrentCategory(player));
-                if (toGive != null) {
-                    player.getInventory().addItem(toGive);
-                }
+                if (toGive != null) player.getInventory().addItem(toGive);
                 triggerPerfectCheck(player);
             }
         }
@@ -242,13 +240,20 @@ public class BlockFixes implements Listener {
             if (!isBuildArea) {
                 if (!player.isOp()) {
                     event.setCancelled(true);
+                } else if (!player.isSneaking()) {
+                    event.setCancelled(true);
                 }
+            }
+
+            // Forza il check della vittoria anche se rompe i blocchi in Creativa mentre gioca
+            if (plugin.getGameManager().getState(player).equals("PLAYING")) {
+                triggerPerfectCheck(player);
             }
         }
     }
 
     // Protegge il piazzamento dei blocchi
-    @EventHandler
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
     public void onBlockPlace(org.bukkit.event.block.BlockPlaceEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
         if (!player.getWorld().getName().equals("practice")) return;
@@ -262,7 +267,6 @@ public class BlockFixes implements Listener {
         boolean isFloorArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y == 100);
 
         if (player.getGameMode() == GameMode.SURVIVAL) {
-            // Può piazzare solo nell'aria sopra il pavimento
             if (!isBuildArea) {
                 event.setCancelled(true);
             }
@@ -270,7 +274,9 @@ public class BlockFixes implements Listener {
         else if (player.getGameMode() == GameMode.CREATIVE) {
             if (!isBuildArea) {
                 if (!player.isOp()) {
-                    event.setCancelled(true);
+                    event.setCancelled(true); // Blocco totale per gli utenti normali
+                } else if (!player.isSneaking()) {
+                    event.setCancelled(true); // Anche gli OP devono shiftare
                 }
             }
         }

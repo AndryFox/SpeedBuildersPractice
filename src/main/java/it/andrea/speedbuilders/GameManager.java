@@ -192,7 +192,7 @@ public class GameManager {
         boolean useCustom = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".use_custom_floor", false);
 
         if (useCustom && plugin.getConfig().contains("players." + player.getUniqueId() + ".custom_floor_data")) {
-            // Modalità Custom Floor: Piazzo ESATTAMENTE quello che ha salvato, zero intromissioni.
+            // Modalità Custom Floor (attivata solo tramite il cartello)
             List<String> customData = plugin.getConfig().getStringList("players." + player.getUniqueId() + ".custom_floor_data");
             for (String data : customData) {
                 String[] parts = data.split(";");
@@ -202,13 +202,13 @@ public class GameManager {
                 }
             }
         } else {
-            // Modalità Pavimento Normale
+            // Modalità Pavimento della Mappa
             for (int x = -3; x <= 3; x++) {
                 for (int z = -3; z <= 3; z++) {
                     Block floorBlock = world.getBlockAt(x, 100, z);
+                    boolean found = false;
 
                     if (category.equals("FearGames")) {
-                        boolean found = false;
                         for (String dataString : blocksData) {
                             String[] parts = dataString.split(";");
                             if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 0 && Integer.parseInt(parts[2]) == z) {
@@ -220,10 +220,9 @@ public class GameManager {
                         }
                         if (!found) {
                             floorBlock.setType(Material.STAINED_GLASS);
-                            floorBlock.setData((byte) 15);
+                            floorBlock.setData((byte) 15); // Vetro nero per FearGames
                         }
                     } else if (category.equals("Mineplex")) {
-                        boolean found = false;
                         for (String dataString : blocksData) {
                             String[] parts = dataString.split(";");
                             if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 1 && Integer.parseInt(parts[2]) == z) {
@@ -239,8 +238,23 @@ public class GameManager {
                             }
                         }
                         if (!found) {
-                            floorBlock.setType(Material.WOOD);
-                            floorBlock.setData((byte) 1);
+                            floorBlock.setType(Material.GRASS); // Erba di default per Mineplex
+                            floorBlock.setData((byte) 0);
+                        }
+                    } else {
+                        // Per le build Custom, TempTest o qualsiasi altra categoria
+                        for (String dataString : blocksData) {
+                            String[] parts = dataString.split(";");
+                            if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 0 && Integer.parseInt(parts[2]) == z) {
+                                floorBlock.setType(Material.valueOf(parts[3]));
+                                floorBlock.setData(Byte.parseByte(parts[4]));
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            floorBlock.setType(Material.GRASS); // Erba di default assoluto
+                            floorBlock.setData((byte) 0);
                         }
                     }
                 }
@@ -297,6 +311,10 @@ public class GameManager {
     public void loadBuild(Player player, int id, String category) {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
+
+        // Spegne il Custom Floor per caricare il vero pavimento della mappa
+        plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
+        plugin.saveConfig();
 
         currentCategory.put(player, category);
         FileConfiguration config = getBuildConfig(category);
@@ -552,9 +570,9 @@ public class GameManager {
         // --- 1. IL TRONO: CATEGORIA "CUSTOM" (Slot 4 - Al centro in alto) ---
         String customName = section != null ? section.getString("Custom.name", "Custom") : "Custom";
         String customIp = section != null ? section.getString("Custom.ip", "Locale") : "Locale";
-        String customIcon = section != null ? section.getString("Custom.icon", "COMMAND;0") : "COMMAND;0";
+        String customIcon = section != null ? section.getString("Custom.icon", "WORKBENCH;0") : "WORKBENCH;0";
 
-        Material cMat = Material.COMMAND;
+        Material cMat = Material.WORKBENCH;
         short cData = 0;
         try {
             String[] parts = customIcon.split(";");
