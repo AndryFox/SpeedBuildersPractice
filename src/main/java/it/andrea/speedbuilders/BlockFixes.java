@@ -2,6 +2,7 @@ package it.andrea.speedbuilders;
 
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -58,7 +59,7 @@ public class BlockFixes implements Listener {
                         mat.contains("OBSIDIAN")) {
 
                     event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
-                    event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW); // <- FIX: Ti permette di piazzarci roba sopra!
+                    event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW);
                 }
             }
 
@@ -66,9 +67,14 @@ public class BlockFixes implements Listener {
             if (item != null) {
                 Block placeLoc = clicked.getRelative(event.getBlockFace());
 
+                // MULTIPLAYER FIX: Calculate relative coordinates
+                int plotId = plugin.getPlotManager().getPlot(event.getPlayer());
+                Location centerLoc = plugin.getPlotManager().getPlotCenter(event.getPlayer().getWorld(), plotId);
+                int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
                 if (item.getType() == Material.FLOWER_POT_ITEM || item.getType().name().contains("DOOR")) {
 
-                    if (!(placeLoc.getX() >= -3 && placeLoc.getX() <= 3 && placeLoc.getZ() >= -3 && placeLoc.getZ() <= 3 && placeLoc.getY() > 100)) {
+                    if (!(Math.abs(placeLoc.getX() - cX) <= 3 && Math.abs(placeLoc.getZ() - cZ) <= 3 && placeLoc.getY() > 100)) {
                         if (event.getPlayer().getGameMode() != GameMode.CREATIVE) {
                             event.setCancelled(true);
                             event.getPlayer().sendMessage("§cPuoi costruire solo nel riquadro nero!");
@@ -167,14 +173,10 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // --- NUOVI FIX AGGIUNTI DA QUI IN POI ---
-
-    // Blocca l'apertura delle interfacce fisiche per poter piazzare blocchi (shiftando), ma LASCIA APRIRE I MENU!
     @EventHandler
     public void onInventoryOpen(InventoryOpenEvent event) {
         if (event.getPlayer().getWorld().getName().equals("practice") && !event.getPlayer().hasPermission("speedbuilders.admin")) {
 
-            // SE L'INVENTARIO È VIRTUALE (Come i nostri menu che hanno holder = null), FALLO PASSARE!
             if (event.getInventory().getHolder() == null) {
                 return;
             }
@@ -191,7 +193,6 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // Gestisce i blocchi rotti: blocca il drop vanilla, usa il Normalizzatore e PROTEGGE L'ISOLA
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
     public void onBlockBreak(BlockBreakEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
@@ -202,8 +203,15 @@ public class BlockFixes implements Listener {
         int y = b.getY();
         int z = b.getZ();
 
-        boolean isBuildArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y > 100);
-        boolean isFloorArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y == 100);
+        // MULTIPLAYER FIX: Calculate relative coordinates
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(player.getWorld(), plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
+        boolean isBuildArea = (Math.abs(x - cX) <= 3) && (Math.abs(z - cZ) <= 3) && (y > 100);
+
+        GameManager gm = plugin.getGameManager();
+        String state = gm.getState(player);
 
         if (player.getGameMode() == GameMode.SURVIVAL) {
             if (!isBuildArea) {
@@ -211,30 +219,33 @@ public class BlockFixes implements Listener {
                 return;
             }
 
-            GameManager gm = plugin.getGameManager();
-            if (gm.getState(player).equals("PLAYING")) {
-                event.setDropItems(false);
-                Material type = b.getType();
-                byte data = b.getData();
+            if (!state.equals("PLAYING")) {
+                event.setCancelled(true);
+                player.sendMessage("§cNon puoi rompere i blocchi in questa fase!");
+                return;
+            }
 
-                if (type == Material.DOUBLE_PLANT || type.name().contains("DOOR")) {
-                    Block top = (data >= 8) ? b : b.getRelative(BlockFace.UP);
-                    Block bottom = (data >= 8) ? b.getRelative(BlockFace.DOWN) : b;
-                    byte bottomData = bottom.getData();
+            event.setDropItems(false);
+            Material type = b.getType();
+            byte data = b.getData();
 
-                    if (top.getType() == type) top.setType(Material.AIR);
-                    if (bottom.getType() == type) bottom.setType(Material.AIR);
+            if (type == Material.DOUBLE_PLANT || type.name().contains("DOOR")) {
+                Block top = (data >= 8) ? b : b.getRelative(BlockFace.UP);
+                Block bottom = (data >= 8) ? b.getRelative(BlockFace.DOWN) : b;
+                byte bottomData = bottom.getData();
 
-                    ItemStack toGive = ItemUtils.normalizeItem(type, bottomData, gm.getCurrentCategory(player));
-                    if (toGive != null) player.getInventory().addItem(toGive);
-                    triggerPerfectCheck(player);
-                    return;
-                }
+                if (top.getType() == type) top.setType(Material.AIR);
+                if (bottom.getType() == type) bottom.setType(Material.AIR);
 
-                ItemStack toGive = ItemUtils.normalizeItem(type, data, gm.getCurrentCategory(player));
+                ItemStack toGive = ItemUtils.normalizeItem(type, bottomData, gm.getCurrentCategory(player));
                 if (toGive != null) player.getInventory().addItem(toGive);
                 triggerPerfectCheck(player);
+                return;
             }
+
+            ItemStack toGive = ItemUtils.normalizeItem(type, data, gm.getCurrentCategory(player));
+            if (toGive != null) player.getInventory().addItem(toGive);
+            triggerPerfectCheck(player);
         }
         else if (player.getGameMode() == GameMode.CREATIVE) {
             if (!isBuildArea) {
@@ -245,14 +256,12 @@ public class BlockFixes implements Listener {
                 }
             }
 
-            // Forza il check della vittoria anche se rompe i blocchi in Creativa mentre gioca
-            if (plugin.getGameManager().getState(player).equals("PLAYING")) {
+            if (state.equals("PLAYING")) {
                 triggerPerfectCheck(player);
             }
         }
     }
 
-    // Protegge il piazzamento dei blocchi
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
     public void onBlockPlace(org.bukkit.event.block.BlockPlaceEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
@@ -263,8 +272,12 @@ public class BlockFixes implements Listener {
         int y = b.getY();
         int z = b.getZ();
 
-        boolean isBuildArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y > 100);
-        boolean isFloorArea = (x >= -3 && x <= 3) && (z >= -3 && z <= 3) && (y == 100);
+        // MULTIPLAYER FIX: Calculate relative coordinates
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(player.getWorld(), plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
+        boolean isBuildArea = (Math.abs(x - cX) <= 3) && (Math.abs(z - cZ) <= 3) && (y > 100);
 
         if (player.getGameMode() == GameMode.SURVIVAL) {
             if (!isBuildArea) {
@@ -274,15 +287,14 @@ public class BlockFixes implements Listener {
         else if (player.getGameMode() == GameMode.CREATIVE) {
             if (!isBuildArea) {
                 if (!player.isOp()) {
-                    event.setCancelled(true); // Blocco totale per gli utenti normali
+                    event.setCancelled(true);
                 } else if (!player.isSneaking()) {
-                    event.setCancelled(true); // Anche gli OP devono shiftare
+                    event.setCancelled(true);
                 }
             }
         }
     }
 
-    // 1. Blocca l'uso di oggetti pericolosi (Secchi, Accendino, Pozioni, Minecart TNT, Farina d'ossa)
     @EventHandler
     public void onBannedItemsUse(PlayerInteractEvent event) {
         if (!event.getPlayer().getWorld().getName().equals("practice")) return;
@@ -292,7 +304,6 @@ public class BlockFixes implements Listener {
 
         Material t = item.getType();
 
-        // Lista di oggetti disabilitati
         if (t == Material.FLINT_AND_STEEL ||
                 t == Material.EXPLOSIVE_MINECART ||
                 t == Material.MONSTER_EGG ||
@@ -308,14 +319,12 @@ public class BlockFixes implements Listener {
             return;
         }
 
-        // Blocca specificamente la Farina d'Ossa (INK_SACK con data 15) per evitare crescite istantanee
         if (t == Material.INK_SACK && item.getDurability() == 15) {
             event.setCancelled(true);
             event.getPlayer().sendMessage("§cLa farina d'ossa è disabilitata!");
         }
     }
 
-    // 2. Blocca la creazione di portali del Nether e dell'End
     @EventHandler
     public void onPortalCreate(org.bukkit.event.world.PortalCreateEvent event) {
         if (event.getWorld().getName().equals("practice")) {
@@ -323,7 +332,6 @@ public class BlockFixes implements Listener {
         }
     }
 
-    // 3. Blocca l'accensione di fuochi (anche accidentali) o la loro propagazione
     @EventHandler
     public void onFireIgnite(org.bukkit.event.block.BlockIgniteEvent event) {
         if (event.getBlock().getWorld().getName().equals("practice")) {

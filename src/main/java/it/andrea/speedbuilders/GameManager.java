@@ -40,6 +40,7 @@ public class GameManager {
     private final HashMap<Player, String> timerModes = new HashMap<>();
     private final HashMap<Player, Boolean> usedFly = new HashMap<>();
 
+    public void clearCurrentCategory(Player player) { currentCategory.remove(player); }
     public void setAwaitingCategory(Player p, boolean val) { if (val) awaitingCategory.put(p, true); else awaitingCategory.remove(p); }
     public boolean isAwaitingCategory(Player p) { return awaitingCategory.containsKey(p); }
     public void setAwaitingSearch(Player p, boolean val) { if (val) awaitingSearch.put(p, true); else awaitingSearch.remove(p); }
@@ -50,7 +51,6 @@ public class GameManager {
     public void setContinuousRandom(Player p, boolean val) { if (val) continuousRandom.put(p, true); else continuousRandom.remove(p); }
     public boolean isContinuousRandom(Player p) { return continuousRandom.getOrDefault(p, false); }
     public boolean hasActiveSearch(Player p) { return activeSearch.containsKey(p); }
-    // Configurazione fantasma per i test, non viene mai scritta su file
     private final org.bukkit.configuration.file.FileConfiguration memoryConfig = new org.bukkit.configuration.file.YamlConfiguration();
 
     public GameManager(Main plugin) {
@@ -62,7 +62,6 @@ public class GameManager {
     public void setUsedFly(Player p, boolean val) { if (val) usedFly.put(p, true); else usedFly.remove(p); }
     public boolean hasUsedFly(Player p) { return usedFly.getOrDefault(p, false); }
     public String getState(Player player) { return playerStates.getOrDefault(player, "IDLE"); }
-    public void setState(Player player, String state) { playerStates.put(player, state); }
     public int getCurrentBuild(Player player) { return currentBuild.getOrDefault(player, -1); }
     public boolean hasPendingDelete(Player player) { return pendingDeletes.containsKey(player); }
     public int getPendingDelete(Player player) { return pendingDeletes.get(player); }
@@ -77,19 +76,101 @@ public class GameManager {
         return false;
     }
 
+    public void setState(Player player, String state) {
+        playerStates.put(player, state);
+        updateScoreboard(player);
+    }
+
+    public void updateScoreboard(Player player) {
+        if (!player.getWorld().getName().equals("practice")) {
+            player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
+            return;
+        }
+
+        org.bukkit.scoreboard.ScoreboardManager manager = Bukkit.getScoreboardManager();
+        org.bukkit.scoreboard.Scoreboard board = manager.getNewScoreboard();
+        org.bukkit.scoreboard.Objective obj = board.registerNewObjective("speedbuilders", "dummy");
+        obj.setDisplaySlot(org.bukkit.scoreboard.DisplaySlot.SIDEBAR);
+
+        obj.setDisplayName("§aIn Gioco");
+
+        int buildId = getCurrentBuild(player);
+        String cat = getCurrentCategory(player);
+        String bName = buildId != -1 ? getBuildConfig(cat).getString("builds." + buildId + ".name", "Nessuna") : "Nessuna";
+        String timerMode = getTimerMode(player).equals("COUNTDOWN") ? "Zen" : "Classica";
+        String state = getState(player);
+
+        String stateFormat = "In Attesa";
+        if (state.equals("PLAYING")) stateFormat = "In Gioco";
+        else if (state.equals("COUNTDOWN")) stateFormat = "Osservazione";
+        else if (state.equals("SHOWING_NAME")) stateFormat = "Memorizzazione";
+        else if (state.equals("WAITING_FIRST_BLOCK")) stateFormat = "Attesa blocco";
+
+        obj.getScore("§1").setScore(11);
+        obj.getScore("§6Mappa: §a" + bName).setScore(10);
+        obj.getScore("§6Server: §e" + cat).setScore(9);
+
+        obj.getScore("§2").setScore(8);
+        obj.getScore("§6Stato: §6" + stateFormat).setScore(7);
+        obj.getScore("§6Modalità: §d" + timerMode).setScore(6);
+
+        String prStr = "Nessuno";
+        String wrStr = "Nessuno";
+
+        if (buildId != -1) {
+            String recordKey = cat + "_" + buildId;
+            long pr = -1;
+            long wr = -1;
+
+            if (plugin.getConfig().contains("records")) {
+                for (String uuidStr : plugin.getConfig().getConfigurationSection("records").getKeys(false)) {
+                    org.bukkit.configuration.ConfigurationSection userSec = plugin.getConfig().getConfigurationSection("records." + uuidStr);
+                    if (userSec == null) continue;
+
+                    for (String key : userSec.getKeys(false)) {
+                        if (key.equals(recordKey) || key.startsWith(recordKey + "_")) {
+                            if (key.endsWith("_tags")) continue;
+                            long time = userSec.getLong(key);
+
+                            long timeForWr = time;
+                            String mode = key.startsWith(recordKey + "_") ? key.substring(recordKey.length() + 1) : "normal";
+                            if (mode.contains("fly") && !cat.equalsIgnoreCase("Hypixel")) timeForWr += 3000;
+
+                            if (uuidStr.equals(player.getUniqueId().toString())) {
+                                if (pr == -1 || time < pr) pr = time;
+                            }
+                            if (wr == -1 || timeForWr < wr) wr = timeForWr;
+                        }
+                    }
+                }
+            }
+            if (pr != -1) prStr = (pr / 1000.0) + "s";
+            if (wr != -1) wrStr = (wr / 1000.0) + "s";
+        }
+
+        obj.getScore("§3").setScore(5);
+        obj.getScore("§6Record Tuo: §a" + prStr).setScore(4);
+        obj.getScore("§6Record WR: §a" + wrStr).setScore(3);
+
+        obj.getScore("§4").setScore(2);
+        obj.getScore("§6sbpractice.falix.gg").setScore(1);
+
+        player.setScoreboard(board);
+    }
+
     public void forceReset(Player player) {
         if (activeTimers.containsKey(player)) activeTimers.remove(player);
         if (actionBars.containsKey(player)) { actionBars.get(player).cancel(); actionBars.remove(player); }
         if (countdownTasks.containsKey(player)) { countdownTasks.get(player).cancel(); countdownTasks.remove(player); }
-        usedFly.remove(player); // <-- AGGIUNTO QUI
+        usedFly.remove(player);
         player.getInventory().clear();
-        clearPlot(player.getWorld());
+        clearPlot(player);
     }
 
     public void resetPlayer(Player player) {
         forceReset(player);
         playerStates.put(player, "IDLE");
-        continuousRandom.remove(player); // <- Aggiunto questo
+        continuousRandom.remove(player);
         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
     }
 
@@ -120,8 +201,11 @@ public class GameManager {
         practiceWorld.setGameRuleValue("randomTickSpeed", "0");
         practiceWorld.setTime(6000);
 
-        int centerX = 0, centerY = 100, centerZ = 0, maxRadius = 13;
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(practiceWorld, plotId);
+        int cX = centerLoc.getBlockX(), centerY = 100, cZ = centerLoc.getBlockZ(), maxRadius = 13;
 
+        // 1. Genera la base galleggiante
         for (int yOffset = 0; yOffset >= -14; yOffset--) {
             double currentRadius = maxRadius * (1.0 - Math.pow((double) Math.abs(yOffset) / 14.0, 1.5));
             for (int x = -maxRadius; x <= maxRadius; x++) {
@@ -130,7 +214,7 @@ public class GameManager {
                     double noise = (Math.random() * 2.5) - 1.25;
 
                     if (distance + noise <= currentRadius) {
-                        Block b = practiceWorld.getBlockAt(centerX + x, centerY + yOffset, centerZ + z);
+                        Block b = practiceWorld.getBlockAt(cX + x, centerY + yOffset, cZ + z);
                         double rand = Math.random();
                         if (rand > 0.7) { b.setType(Material.STAINED_CLAY); b.setData((byte) 1); }
                         else if (rand > 0.4) { b.setType(Material.CONCRETE); b.setData((byte) 1); }
@@ -141,16 +225,17 @@ public class GameManager {
             }
         }
 
+        // 2. Genera il pavimento e i bordi di Quarzo
         for (int x = -4; x <= 4; x++) {
             for (int z = -4; z <= 4; z++) {
-                Block topBlock = practiceWorld.getBlockAt(centerX + x, centerY, centerZ + z);
+                Block topBlock = practiceWorld.getBlockAt(cX + x, centerY, cZ + z);
                 for (int y = 1; y <= 32; y++) {
-                    practiceWorld.getBlockAt(centerX + x, centerY + y, centerZ + z).setType(Material.AIR);
+                    practiceWorld.getBlockAt(cX + x, centerY + y, cZ + z).setType(Material.AIR);
                 }
 
                 if (x >= -3 && x <= 3 && z >= -3 && z <= 3) {
                     topBlock.setType(Material.STAINED_GLASS); topBlock.setData((byte) 15);
-                    Block underBlock = practiceWorld.getBlockAt(centerX + x, centerY - 1, centerZ + z);
+                    Block underBlock = practiceWorld.getBlockAt(cX + x, centerY - 1, cZ + z);
                     underBlock.setType(Material.WOOD); underBlock.setData((byte) 1);
                 } else {
                     topBlock.setType(Material.QUARTZ_BLOCK);
@@ -158,23 +243,93 @@ public class GameManager {
             }
         }
 
-        Location spawnIsland = new Location(practiceWorld, 0.5, 101, 5.5, 180f, 35f);
+        // --- 3. SPAWN AUTOMATICO DEI 5 CARTELLI FLUTTUANTI ---
+
+        // Cartello Replay (Centro in basso, Y=101)
+        Block replayBlock = practiceWorld.getBlockAt(cX, 101, cZ + 5);
+        replayBlock.setType(Material.WALL_SIGN);
+        replayBlock.setData((byte) 3); // Faccia verso Sud (verso il giocatore)
+        org.bukkit.block.Sign replaySign = (org.bukkit.block.Sign) replayBlock.getState();
+        replaySign.setLine(1, "§b§lReplay");
+        replaySign.update();
+
+        // --- Cartelli in alto (Y=102) ---
+
+        // 1. Floor (Sinistra esterna)
+        Block floorBlock = practiceWorld.getBlockAt(cX - 2, 102, cZ + 5);
+        floorBlock.setType(Material.WALL_SIGN);
+        floorBlock.setData((byte) 3);
+        org.bukkit.block.Sign floorSign = (org.bukkit.block.Sign) floorBlock.getState();
+        floorSign.setLine(1, "§9§lFloor");
+        floorSign.setLine(3, "§lRaymano");
+        floorSign.update();
+
+        // 2. Building (Sinistra interna)
+        Block buildingBlock = practiceWorld.getBlockAt(cX - 1, 102, cZ + 5);
+        buildingBlock.setType(Material.WALL_SIGN);
+        buildingBlock.setData((byte) 3);
+        org.bukkit.block.Sign buildingSign = (org.bukkit.block.Sign) buildingBlock.getState();
+        buildingSign.setLine(1, "§e§lBuilding");
+        buildingSign.setLine(3, "§lNever Dies");
+        buildingSign.update();
+
+        // 3. Timer (Destra interna)
+        Block timerBlock = practiceWorld.getBlockAt(cX + 1, 102, cZ + 5);
+        timerBlock.setType(Material.WALL_SIGN);
+        timerBlock.setData((byte) 3);
+        org.bukkit.block.Sign timerSign = (org.bukkit.block.Sign) timerBlock.getState();
+        timerSign.setLine(1, "§c§lTimer");
+        timerSign.update();
+
+        // 4. Modalità (Destra esterna)
+        Block modeBlock = practiceWorld.getBlockAt(cX + 2, 102, cZ + 5);
+        modeBlock.setType(Material.WALL_SIGN);
+        modeBlock.setData((byte) 3);
+        org.bukkit.block.Sign modeSign = (org.bukkit.block.Sign) modeBlock.getState();
+        modeSign.setLine(1, "§a§lModalità");
+        modeSign.update();
+
+        // --- 4. SPAWN AUTOMATICO NPC ---
+        Location npcLoc = new Location(practiceWorld, cX + 0.5, 101, cZ + 6.5, 180f, 0f);
+        boolean npcExists = false;
+        // Evita di spawnare cloni se l'NPC esiste già
+        for (org.bukkit.entity.Entity e : practiceWorld.getNearbyEntities(npcLoc, 1, 2, 1)) {
+            if (e.getType() == org.bukkit.entity.EntityType.VILLAGER) npcExists = true;
+        }
+
+        if (!npcExists) {
+            org.bukkit.entity.Villager npc = (org.bukkit.entity.Villager) practiceWorld.spawnEntity(npcLoc, org.bukkit.entity.EntityType.VILLAGER);
+            npc.setCustomName("§e§lLista Build");
+            npc.setCustomNameVisible(true);
+            npc.setAI(false);
+            npc.setInvulnerable(true);
+            npc.setCollidable(false);
+            npc.setSilent(true);
+            npc.setMetadata("MenuNPC", new org.bukkit.metadata.FixedMetadataValue(plugin, true));
+        }
+
+        Location spawnIsland = new Location(practiceWorld, cX + 0.5, 101, cZ + 5.5, 180f, 35f);
         player.teleport(spawnIsland);
-        player.sendMessage("§bNuova isola di allenamento generata con successo!");
+        player.sendMessage("§bIsola §e(Plot ID: " + plotId + ") §bgenerata con successo!");
     }
 
     public void saveAndApplyCustomFloor(Player player) {
         org.bukkit.World w = player.getWorld();
         java.util.List<String> floorBlocks = new java.util.ArrayList<>();
 
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(w, plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
         plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", true);
 
         for (int x = -3; x <= 3; x++) {
             for (int z = -3; z <= 3; z++) {
-                org.bukkit.block.Block b101 = w.getBlockAt(x, 101, z);
-                org.bukkit.block.Block b100 = w.getBlockAt(x, 100, z);
+                org.bukkit.block.Block b101 = w.getBlockAt(cX + x, 101, cZ + z);
+                org.bukkit.block.Block b100 = w.getBlockAt(cX + x, 100, cZ + z);
 
                 if (b101.getType() != org.bukkit.Material.AIR) {
+                    // Salva la coordinata relativa, non quella assoluta
                     floorBlocks.add(x + ";" + z + ";" + b101.getType().name() + ";" + b101.getData());
                     b100.setType(b101.getType());
                     b100.setData(b101.getData());
@@ -187,7 +342,6 @@ public class GameManager {
 
         plugin.getConfig().set("players." + player.getUniqueId() + ".custom_floor_data", floorBlocks);
         plugin.saveConfig();
-        // Nessun messaggio e nessun suono.
     }
 
     @SuppressWarnings("deprecation")
@@ -196,23 +350,25 @@ public class GameManager {
         FileConfiguration config = getBuildConfig(category);
         List<String> blocksData = config.getStringList("builds." + buildId + ".blocks");
 
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(world, plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
         boolean useCustom = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".use_custom_floor", false);
 
         if (useCustom && plugin.getConfig().contains("players." + player.getUniqueId() + ".custom_floor_data")) {
-            // Modalità Custom Floor (attivata solo tramite il cartello)
             List<String> customData = plugin.getConfig().getStringList("players." + player.getUniqueId() + ".custom_floor_data");
             for (String data : customData) {
                 String[] parts = data.split(";");
                 if (parts.length == 4) {
-                    world.getBlockAt(Integer.parseInt(parts[0]), 100, Integer.parseInt(parts[1]))
+                    world.getBlockAt(cX + Integer.parseInt(parts[0]), 100, cZ + Integer.parseInt(parts[1]))
                             .setTypeIdAndData(Material.valueOf(parts[2]).getId(), Byte.parseByte(parts[3]), false);
                 }
             }
         } else {
-            // Modalità Pavimento della Mappa
             for (int x = -3; x <= 3; x++) {
                 for (int z = -3; z <= 3; z++) {
-                    Block floorBlock = world.getBlockAt(x, 100, z);
+                    Block floorBlock = world.getBlockAt(cX + x, 100, cZ + z);
                     boolean found = false;
 
                     if (category.equals("FearGames")) {
@@ -227,7 +383,7 @@ public class GameManager {
                         }
                         if (!found) {
                             floorBlock.setType(Material.STAINED_GLASS);
-                            floorBlock.setData((byte) 15); // Vetro nero per FearGames
+                            floorBlock.setData((byte) 15);
                         }
                     } else if (category.equals("Mineplex")) {
                         for (String dataString : blocksData) {
@@ -245,11 +401,10 @@ public class GameManager {
                             }
                         }
                         if (!found) {
-                            floorBlock.setType(Material.GRASS); // Erba di default per Mineplex
+                            floorBlock.setType(Material.GRASS);
                             floorBlock.setData((byte) 0);
                         }
                     } else {
-                        // Per le build Custom, TempTest o qualsiasi altra categoria
                         for (String dataString : blocksData) {
                             String[] parts = dataString.split(";");
                             if (parts.length == 5 && Integer.parseInt(parts[0]) == x && Integer.parseInt(parts[1]) == 0 && Integer.parseInt(parts[2]) == z) {
@@ -260,7 +415,7 @@ public class GameManager {
                             }
                         }
                         if (!found) {
-                            floorBlock.setType(Material.GRASS); // Erba di default assoluto
+                            floorBlock.setType(Material.GRASS);
                             floorBlock.setData((byte) 0);
                         }
                     }
@@ -274,11 +429,15 @@ public class GameManager {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
 
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(world, plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
         List<String> blocksData = new ArrayList<>();
         for (int x = -3; x <= 3; x++) {
             for (int y = 1; y <= 32; y++) {
                 for (int z = -3; z <= 3; z++) {
-                    Block block = world.getBlockAt(x, 100 + y, z);
+                    Block block = world.getBlockAt(cX + x, 100 + y, cZ + z);
                     if (block.getType() != Material.AIR) {
                         blocksData.add(x + ";" + y + ";" + z + ";" + block.getType().name() + ";" + block.getData());
                     }
@@ -301,7 +460,6 @@ public class GameManager {
         config.set("builds." + id + ".blocks", blocksData);
         config.set("builds." + id + ".hotbar", hotbar);
 
-        // Salva su file SOLO se non è un test temporaneo
         if (!category.equalsIgnoreCase("TempTest")) {
             try {
                 config.save(new java.io.File(plugin.getDataFolder(), category.toLowerCase() + "_builds.yml"));
@@ -319,7 +477,24 @@ public class GameManager {
         World world = Bukkit.getWorld("practice");
         if (world == null) return;
 
+        String oldCat = currentCategory.get(player);
         currentCategory.put(player, category);
+
+        if (oldCat == null || !oldCat.equalsIgnoreCase(category)) {
+            if (category.equalsIgnoreCase("Hypixel")) {
+                plugin.getConfig().set("players." + player.getUniqueId() + ".dj", false);
+                player.setAllowFlight(true);
+                player.setFlying(true);
+                player.sendMessage("§8§o(Volo attivato in automatico per Hypixel)");
+            } else {
+                plugin.getConfig().set("players." + player.getUniqueId() + ".dj", true);
+                player.setAllowFlight(true);
+                player.setFlying(false);
+                player.sendMessage("§8§o(Double Jump attivato in automatico)");
+            }
+            plugin.saveConfig();
+        }
+
         FileConfiguration config = getBuildConfig(category);
 
         if (!config.contains("builds." + id)) {
@@ -327,8 +502,12 @@ public class GameManager {
             return;
         }
 
-        clearPlot(world);
+        clearPlot(player);
         generateFloor(player, id, category);
+
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(world, plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
 
         List<String> hotbar = config.getStringList("builds." + id + ".hotbar");
         byte expectedSkullType = 0;
@@ -359,7 +538,7 @@ public class GameManager {
 
                     if (parts[3].startsWith("MOB_")) {
                         org.bukkit.entity.EntityType type = plugin.getMobManager().getEntityType(parts[3].substring(4));
-                        Location loc = new Location(world, x + 0.5, 100 + y, z + 0.5, 180f, 0f);
+                        Location loc = new Location(world, cX + x + 0.5, 100 + y, cZ + z + 0.5, 180f, 0f);
                         org.bukkit.entity.Entity ent = world.spawnEntity(loc, type);
 
                         ent.setMetadata("SpeedBuildersMob", new org.bukkit.metadata.FixedMetadataValue(plugin, true));
@@ -381,7 +560,7 @@ public class GameManager {
                     Material material = Material.valueOf(parts[3]);
                     byte data = Byte.parseByte(parts[4]);
 
-                    Block block = world.getBlockAt(x, 100 + y, z);
+                    Block block = world.getBlockAt(cX + x, 100 + y, cZ + z);
                     block.setType(material); block.setData(data);
 
                     if (material == Material.SKULL && expectedSkullType >= 0 && expectedSkullType < org.bukkit.SkullType.values().length) {
@@ -393,113 +572,152 @@ public class GameManager {
             }
         }
 
-        String name = config.getString("builds." + id + ".name", "Sconosciuta");
-        player.sendMessage("§aBuild '" + name + "' (" + category + ") §e[ID: " + id + "]§a caricata! Clicca sul quarzo per iniziare.");
-        plugin.getHologramManager().updateArenaHologram(new Location(world, -5.5, 105.0, -5.5), id, category);
+        plugin.getHologramManager().updateArenaHologram(new Location(world, cX - 5.5, 105.0, cZ - 5.5), id, category);
         currentBuild.put(player, id);
+
+        updateScoreboard(player);
     }
 
-    public void clearPlot(World world) {
+    public void clearPlot(Player player) {
+        World world = player.getWorld();
+        if (!world.getName().equals("practice")) return;
+
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(world, plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
+        // Pulisce i blocchi del plot
         for (int x = -3; x <= 3; x++) {
             for (int y = 1; y <= 32; y++) {
                 for (int z = -3; z <= 3; z++) {
-                    world.getBlockAt(x, 100 + y, z).setType(Material.AIR);
+                    world.getBlockAt(cX + x, 100 + y, cZ + z).setType(Material.AIR);
                 }
             }
         }
-        plugin.getMobManager().clearMobs(world);
-    }
 
-    public void readyBuild(Player player) {
-        // Avvia sempre l'osservazione di 3 secondi
-        startCountdown(player, 3);
-    }
-
-    // Metodo per saltare l'osservazione e iniziare all'istante
-    public void instantReady(Player player) {
-        int buildId = getCurrentBuild(player);
-        if (buildId == -1) return;
-
-        player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
-        clearPlot(player.getWorld());
-        giveBuildItems(player, buildId);
-
-        if (getTimerMode(player).equals("FIRST_BLOCK")) {
-            playerStates.put(player, "WAITING_FIRST_BLOCK");
-            player.sendTitle("", "§eVIA! §7(Il timer parte al primo blocco)", 0, 40, 10);
-        } else {
-            player.sendTitle("", "§cVIA!", 0, 20, 10);
-            playerStates.put(player, "PLAYING");
-            startTimer(player);
+        // Pulisce i mob del plot
+        for (org.bukkit.entity.Entity ent : world.getEntities()) {
+            if (ent.hasMetadata("SpeedBuildersMob")) {
+                if (Math.abs(ent.getLocation().getBlockX() - cX) <= 3 && Math.abs(ent.getLocation().getBlockZ() - cZ) <= 3) {
+                    ent.remove();
+                }
+            }
         }
     }
 
-    public void startCountdown(Player player, int countdown) {
-        playerStates.put(player, "COUNTDOWN");
-        int buildId = currentBuild.getOrDefault(player, -1);
-        String cat = getCurrentCategory(player);
-        String configName = buildId != -1 ? getBuildConfig(cat).getString("builds." + buildId + ".name", "Build Libera") : "Build Libera";
-        final String buildName = configName;
+    public void readyBuild(Player player) {
+        setState(player, "SHOWING_NAME");
 
-        BukkitTask task = new BukkitRunnable() {
-            int count = countdown;
-            float[] scale = {0.5f, 0.5f, 0.63f, 0.79f, 1.0f, 1.26f};
+        if (countdownTasks.containsKey(player)) {
+            countdownTasks.get(player).cancel();
+        }
+
+        int buildId = getCurrentBuild(player);
+        String cat = getCurrentCategory(player);
+        String bName = buildId != -1 ? getBuildConfig(cat).getString("builds." + buildId + ".name", "Build Libera") : "Build Libera";
+
+        org.bukkit.scheduler.BukkitTask task = new org.bukkit.scheduler.BukkitRunnable() {
+            int count = 3;
 
             @Override
             public void run() {
-                if (!player.isOnline() || !playerStates.getOrDefault(player, "").equals("COUNTDOWN")) { this.cancel(); return; }
+                if (!player.isOnline() || !getState(player).equals("SHOWING_NAME")) {
+                    this.cancel();
+                    return;
+                }
 
-                if (count > 3) {
-                    player.sendTitle("", "§6" + buildName, 5, 25, 0);
-                    count--;
-                } else if (count > 0) {
-                    player.sendTitle("", "§a" + count, 0, 25, 0);
-                    int pitchIndex = Math.max(0, Math.min(5, 6 - count));
-                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_PLING, 1f, scale[pitchIndex]);
+                if (count > 0) {
+                    player.sendTitle("", "§6" + bName, 5, 25, 0);
                     count--;
                 } else {
-                    // Fine del periodo di osservazione: pulisce la mappa e dà gli oggetti
-                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
-                    clearPlot(player.getWorld());
-                    if (buildId != -1) giveBuildItems(player, buildId);
-
-                    // Controlla come deve comportarsi il timer
-                    if (getTimerMode(player).equals("FIRST_BLOCK")) {
-                        playerStates.put(player, "WAITING_FIRST_BLOCK");
-                        player.sendTitle("", "§7(Il timer parte al primo blocco)", 0, 40, 10);
-                    } else {
-                        player.sendTitle("", "§cTempo esaurito!", 0, 20, 10);
-                        playerStates.put(player, "PLAYING");
-                        startTimer(player);
-                    }
-
+                    startActualReady(player);
                     this.cancel();
                 }
             }
         }.runTaskTimer(plugin, 0L, 20L);
+
         countdownTasks.put(player, task);
+    }
+
+    public void startActualReady(Player player) {
+        String mode = getTimerMode(player);
+        int buildId = currentBuild.getOrDefault(player, -1);
+
+        if (countdownTasks.containsKey(player)) {
+            countdownTasks.get(player).cancel();
+        }
+
+        if (mode.equals("COUNTDOWN")) {
+            setState(player, "COUNTDOWN");
+
+            org.bukkit.scheduler.BukkitTask task = new org.bukkit.scheduler.BukkitRunnable() {
+                int count = 3;
+                float[] scale = {0.5f, 0.5f, 0.63f, 0.79f, 1.0f, 1.26f};
+
+                @Override
+                public void run() {
+                    if (!player.isOnline() || !getState(player).equals("COUNTDOWN")) {
+                        this.cancel();
+                        return;
+                    }
+
+                    if (count > 0) {
+                        player.sendTitle("", "§a" + count, 0, 25, 0);
+                        int pitchIndex = Math.max(0, Math.min(5, 6 - count));
+                        player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_PLING, 1f, scale[pitchIndex]);
+                        count--;
+                    } else {
+                        player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
+                        clearPlot(player);
+                        if (buildId != -1) giveBuildItems(player, buildId);
+
+                        player.sendTitle("", "§cTempo esaurito!", 0, 20, 10);
+                        setState(player, "PLAYING");
+                        startTimer(player);
+                        this.cancel();
+                    }
+                }
+            }.runTaskTimer(plugin, 0L, 20L);
+
+            countdownTasks.put(player, task);
+
+        } else {
+            player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
+            clearPlot(player);
+            if (buildId != -1) giveBuildItems(player, buildId);
+
+            setState(player, "WAITING_FIRST_BLOCK");
+            player.sendTitle("", "§7(Il timer parte al primo blocco)", 0, 40, 10);
+        }
     }
 
     public void startTimer(Player player) {
         activeTimers.put(player, System.currentTimeMillis());
 
-        // Se inizia il round col volo già attivo, lo marchiamo
-        if (player.getAllowFlight()) {
+        boolean isActuallyFlying = player.getAllowFlight() && !plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false);
+
+        if (isActuallyFlying) {
             setUsedFly(player, true);
         }
 
         int buildId = currentBuild.getOrDefault(player, -1);
         String cat = getCurrentCategory(player);
 
-        String recordKey = cat + "_" + buildId;
-        String basePath = "records." + player.getUniqueId().toString() + ".";
+        boolean isZen = getTimerMode(player).equals("COUNTDOWN");
+        boolean flyUsed = isActuallyFlying;
 
-        // Recupero automatico dei vecchi record
+        String modeKey = "normal";
+        if (flyUsed && isZen) modeKey = "fly_zen";
+        else if (flyUsed) modeKey = "fly";
+        else if (isZen) modeKey = "zen";
+
+        String basePath = "records." + player.getUniqueId().toString() + ".";
+        String recordKey = cat + "_" + buildId + "_" + modeKey;
+
         if (buildId != -1 && cat.equals("FearGames")) {
-            if (!plugin.getConfig().contains(basePath + recordKey) && plugin.getConfig().contains(basePath + buildId)) {
-                long oldRecord = plugin.getConfig().getLong(basePath + buildId);
+            if (!plugin.getConfig().contains(basePath + recordKey) && plugin.getConfig().contains(basePath + cat + "_" + buildId)) {
+                long oldRecord = plugin.getConfig().getLong(basePath + cat + "_" + buildId);
                 plugin.getConfig().set(basePath + recordKey, oldRecord);
-                plugin.getConfig().set(basePath + buildId, null); // Elimina il vecchio formato
                 plugin.saveConfig();
             }
         }
@@ -523,6 +741,7 @@ public class GameManager {
         if (!playerStates.getOrDefault(player, "").equals("PLAYING") || !activeTimers.containsKey(player)) return;
 
         playerStates.put(player, "WAITING");
+        updateScoreboard(player);
         player.getInventory().clear();
         if (actionBars.containsKey(player)) { actionBars.get(player).cancel(); actionBars.remove(player); }
 
@@ -530,46 +749,73 @@ public class GameManager {
         activeTimers.remove(player);
 
         String cat = getCurrentCategory(player);
-
-        // --- CALCOLO TAGS E PENALITA' ---
         boolean flyUsed = hasUsedFly(player);
         boolean isZen = getTimerMode(player).equals("COUNTDOWN");
 
-        String tags = "";
-        if (flyUsed) tags += "fly ";
-        if (isZen) tags += "zen";
-        tags = tags.trim();
-
-        // Applica 3000 ms (3 secondi) di penalità se ha usato la Fly e non è su Hypixel
-        if (flyUsed && !cat.equalsIgnoreCase("Hypixel")) {
-            elapsed += 3000;
-            player.sendMessage("§c§lATTENZIONE! §7Hai ricevuto §c+3 secondi §7di penalità per aver usato la Fly.");
-        }
+        String modeKey = "normal";
+        if (flyUsed && isZen) modeKey = "fly_zen";
+        else if (flyUsed) modeKey = "fly";
+        else if (isZen) modeKey = "zen";
 
         double seconds = elapsed / 1000.0;
-
         player.sendTitle("", "§aCostruzione perfetta! §8| §fTempo: §e" + seconds + "s", 5, 40, 10);
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
 
         int buildId = currentBuild.getOrDefault(player, -1);
 
         if (buildId != -1) {
-            String recordKey = cat + "_" + buildId;
+            long currentWR = -1;
+            String recordKeyBase = cat + "_" + buildId;
+            if (plugin.getConfig().contains("records")) {
+                for (String uuidStr : plugin.getConfig().getConfigurationSection("records").getKeys(false)) {
+                    org.bukkit.configuration.ConfigurationSection userSec = plugin.getConfig().getConfigurationSection("records." + uuidStr);
+                    if (userSec != null) {
+                        for (String k : userSec.getKeys(false)) {
+                            if (k.equals(recordKeyBase) || k.startsWith(recordKeyBase + "_")) {
+                                if (k.endsWith("_tags")) continue;
+                                long t = userSec.getLong(k);
+                                String m = k.startsWith(recordKeyBase + "_") ? k.substring(recordKeyBase.length() + 1) : "normal";
+                                if (m.contains("fly") && !cat.equalsIgnoreCase("Hypixel")) t += 3000;
+                                if (currentWR == -1 || t < currentWR) currentWR = t;
+                            }
+                        }
+                    }
+                }
+            }
+
+            long timeForWR = elapsed;
+            if (modeKey.contains("fly") && !cat.equalsIgnoreCase("Hypixel")) timeForWR += 3000;
+
+            if (currentWR == -1 || timeForWR < currentWR) {
+                String bName = getBuildConfig(cat).getString("builds." + buildId + ".name", "Sconosciuta");
+
+                String diffText;
+                if (currentWR == -1) {
+                    diffText = "§8(§aPrimo record assoluto!§8)";
+                } else {
+                    double diff = (currentWR - timeForWR) / 1000.0;
+                    diffText = String.format(java.util.Locale.US, "§8(§c%.3fs §8-> §a%.3fs §8| §e-%.3fs§8)", (currentWR / 1000.0), (timeForWR / 1000.0), diff);
+                }
+
+                net.md_5.bungee.api.chat.TextComponent msg = new net.md_5.bungee.api.chat.TextComponent("§8[§bPractice§8] §e" + player.getName() + " §7ha stabilito il nuovo §6§lWorld Record §7su §a" + bName + "§7! " + diffText);
+
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    p.spigot().sendMessage(msg);
+                    p.playSound(p.getLocation(), Sound.ENTITY_ENDERDRAGON_GROWL, 0.5f, 1.5f);
+                }
+            }
+
+            String recordKey = cat + "_" + buildId + "_" + modeKey;
             String recordPath = "records." + player.getUniqueId().toString() + "." + recordKey;
             long currentRecord = plugin.getConfig().getLong(recordPath, 0);
 
             if (currentRecord == 0 || elapsed < currentRecord) {
                 plugin.getConfig().set(recordPath, elapsed);
-                // Salva i tag se ce ne sono, altrimenti li rimuove dal config
-                if (!tags.isEmpty()) {
-                    plugin.getConfig().set(recordPath + "_tags", tags);
-                } else {
-                    plugin.getConfig().set(recordPath + "_tags", null);
-                }
-
                 plugin.saveConfig();
                 player.sendMessage(currentRecord == 0 ? "§b§lRecord Personale: §f" + seconds + "s" : "§b§lRecord Personale: §f" + seconds + "s §7(" + (currentRecord / 1000.0) + "s -> " + seconds + "s)");
             }
+
+            updateScoreboard(player);
 
             new BukkitRunnable() {
                 @Override
@@ -581,21 +827,20 @@ public class GameManager {
                             if (randomId != -1) nextBuildId = randomId;
                         }
                         loadBuild(player, nextBuildId, cat);
-                        readyBuild(player); // <-- MODIFICATO QUI
+                        readyBuild(player);
                     }
                 }
             }.runTaskLater(plugin, 50L);
         } else {
             playerStates.put(player, "IDLE");
+            updateScoreboard(player);
         }
     }
 
     public FileConfiguration getBuildConfig(String category) {
         if (category == null) return plugin.getFearConfig();
 
-        // <-- INIZIO MODIFICA: Se è il test, restituisce la RAM
         if (category.equalsIgnoreCase("TempTest")) return memoryConfig;
-        // <-- FINE MODIFICA
 
         if (category.equalsIgnoreCase("Mineplex")) return plugin.getMineplexConfig();
         if (category.equalsIgnoreCase("FearGames")) return plugin.getFearConfig();
@@ -620,7 +865,6 @@ public class GameManager {
 
         if (section != null) {
             for (String key : section.getKeys(false)) {
-                // Esclude Custom dalla lista normale e impedisce i doppioni
                 if (!key.equalsIgnoreCase("FearGames") && !key.equalsIgnoreCase("Mineplex") && !key.equalsIgnoreCase("Custom")) {
                     allServers.add(key);
                 }
@@ -629,10 +873,8 @@ public class GameManager {
 
         allServers.sort(String.CASE_INSENSITIVE_ORDER);
 
-        // GUI da 54 slot per fare spazio alla categoria Custom isolata
         org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 54, "§8Seleziona Server");
 
-        // --- 1. IL TRONO: CATEGORIA "CUSTOM" (Slot 4 - Al centro in alto) ---
         String customName = section != null ? section.getString("Custom.name", "Custom") : "Custom";
         String customIp = section != null ? section.getString("Custom.ip", "Locale") : "Locale";
         String customIcon = section != null ? section.getString("Custom.icon", "WORKBENCH;0") : "WORKBENCH;0";
@@ -662,7 +904,6 @@ public class GameManager {
         customItem.setItemMeta(customMeta);
         inv.setItem(4, customItem);
 
-        // --- 2. GLI ALTRI SERVER (A partire dalla riga 3) ---
         int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
         int slotIndex = 0;
 
@@ -718,15 +959,13 @@ public class GameManager {
             }
         }
 
-        // --- 3. CONTORNO IN VETRO NERO (SOLO BORDI E PRIME DUE RIGHE) ---
         ItemStack filler = new ItemStack(Material.STAINED_GLASS_PANE, 1, (byte) 15);
         org.bukkit.inventory.meta.ItemMeta fillerMeta = filler.getItemMeta();
         fillerMeta.setDisplayName(" ");
         filler.setItemMeta(fillerMeta);
 
-        // Specifica esattamente in quali slot mettere il vetro nero per creare la cornice
         int[] borderSlots = {
-                0, 1, 2, 3, /* Il 4 è lasciato libero per la categoria Custom */ 5, 6, 7, 8,
+                0, 1, 2, 3, 5, 6, 7, 8,
                 9, 10, 11, 12, 13, 14, 15, 16, 17,
                 18, 26,
                 27, 35,
@@ -743,7 +982,7 @@ public class GameManager {
         searchMeta.setDisplayName("§e§lCerca Build Globale");
         searchMeta.setLore(java.util.Arrays.asList("§7Clicca per cercare una", "§7build in tutti i server."));
         searchBtn.setItemMeta(searchMeta);
-        inv.setItem(49, searchBtn); // Tasto al centro in basso
+        inv.setItem(49, searchBtn);
 
         player.openInventory(inv);
     }
@@ -755,7 +994,6 @@ public class GameManager {
 
         org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 54, title);
 
-        // Classe temporanea per raccogliere e ordinare le build
         class BuildData {
             int id; String name; String cat;
             BuildData(int id, String name, String cat) { this.id = id; this.name = name; this.cat = cat; }
@@ -789,7 +1027,6 @@ public class GameManager {
             }
         }
 
-        // ORDINE ALFABETICO A-Z
         buildList.sort((b1, b2) -> b1.name.compareToIgnoreCase(b2.name));
 
         int maxItemsPerPage = 45;
@@ -875,7 +1112,7 @@ public class GameManager {
         forceReset(player);
         loadBuild(player, buildId, getCurrentCategory(player));
         setState(player, "IDLE");
-        player.sendMessage("§aBuild in modalità esplorazione. Clicca il quarzo per far partire il timer!");
+        player.sendMessage("§aBuild in modalità esplorazione. Clicca il cartello Replay per giocare!");
     }
 
     @SuppressWarnings("deprecation")
@@ -886,7 +1123,6 @@ public class GameManager {
         List<String> hotbar = getBuildConfig(cat).getStringList("builds." + buildId + ".hotbar");
         HashMap<String, Integer> blockCounts = new HashMap<>();
 
-        // Identifica in anticipo quale teschio serve
         byte expectedSkullType = 0;
         if (hotbar != null) {
             for (String h : hotbar) {
@@ -915,10 +1151,19 @@ public class GameManager {
 
                 ItemStack normalized = ItemUtils.normalizeItem(material, data, cat);
                 if (normalized != null) {
-                    // Impone il tipo Wither (o altro) al conteggio dell'inventario
-                    if (normalized.getType() == Material.SKULL_ITEM) {
-                        normalized.setDurability(expectedSkullType);
+                    if (normalized.getType() == Material.SKULL_ITEM) normalized.setDurability(expectedSkullType);
+
+                    String matName = normalized.getType().name();
+                    short dura = normalized.getDurability();
+                    if (matName.contains("STAIRS") || matName.contains("PISTON") || matName.contains("TRAPDOOR") || matName.contains("GATE") || matName.contains("TORCH") || matName.contains("LADDER")) {
+                        dura = 0;
+                    } else if (matName.contains("STEP") || matName.contains("SLAB")) {
+                        dura = (short) (dura % 8);
+                    } else if (matName.contains("LOG")) {
+                        dura = (short) (dura % 4);
                     }
+                    normalized.setDurability(dura);
+
                     String matData = normalized.getType().name() + ";" + normalized.getDurability();
                     blockCounts.put(matData, blockCounts.getOrDefault(matData, 0) + normalized.getAmount());
                 }
@@ -945,8 +1190,8 @@ public class GameManager {
                             int totalNeeded = blockCounts.get(rawMat);
                             egg.setAmount(Math.min(totalNeeded, 64));
 
-                            // Piazza l'oggetto ESATTAMENTE nello slot 'i' in cui è stato salvato
-                            player.getInventory().setItem(i, egg);
+                            player.getInventory().setItem(slotIndex, egg);
+                            slotIndex++;
 
                             int leftOver = totalNeeded - egg.getAmount();
                             if (leftOver > 0) blockCounts.put(rawMat, leftOver);
@@ -958,11 +1203,16 @@ public class GameManager {
                     byte rawData = Byte.parseByte(matDataRaw[1]);
                     ItemStack normalized = ItemUtils.normalizeItem(Material.valueOf(rawMat), rawData, cat);
                     if (normalized != null) {
-                        if (normalized.getType() == Material.SKULL_ITEM) {
-                            normalized.setDurability(expectedSkullType);
-                        }
-                        String key = normalized.getType().name() + ";" + normalized.getDurability();
+                        if (normalized.getType() == Material.SKULL_ITEM) normalized.setDurability(expectedSkullType);
 
+                        String matName = normalized.getType().name();
+                        short dura = normalized.getDurability();
+                        if (matName.contains("STAIRS") || matName.contains("PISTON") || matName.contains("TRAPDOOR") || matName.contains("GATE") || matName.contains("TORCH") || matName.contains("LADDER")) dura = 0;
+                        else if (matName.contains("STEP") || matName.contains("SLAB")) dura = (short) (dura % 8);
+                        else if (matName.contains("LOG")) dura = (short) (dura % 4);
+                        normalized.setDurability(dura);
+
+                        String key = normalized.getType().name() + ";" + normalized.getDurability();
                         if (processedHotbar.contains(key)) continue;
                         processedHotbar.add(key);
 
@@ -970,8 +1220,8 @@ public class GameManager {
                             int totalNeeded = blockCounts.get(key);
                             int toPutInSlot = Math.min(totalNeeded, 64);
 
-                            // Piazza l'oggetto ESATTAMENTE nello slot 'i' in cui è stato salvato
-                            player.getInventory().setItem(i, new ItemStack(normalized.getType(), toPutInSlot, normalized.getDurability()));
+                            player.getInventory().setItem(slotIndex, new ItemStack(normalized.getType(), toPutInSlot, normalized.getDurability()));
+                            slotIndex++;
 
                             int leftOver = totalNeeded - toPutInSlot;
                             if (leftOver > 0) blockCounts.put(key, leftOver);
@@ -1004,17 +1254,25 @@ public class GameManager {
         List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
         World world = player.getWorld();
 
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(world, plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
         int blocksInArena = 0;
         for (int x = -3; x <= 3; x++) {
             for (int y = 1; y <= 32; y++) {
                 for (int z = -3; z <= 3; z++) {
-                    if (world.getBlockAt(x, 100 + y, z).getType() != Material.AIR) blocksInArena++;
+                    if (world.getBlockAt(cX + x, 100 + y, cZ + z).getType() != Material.AIR) blocksInArena++;
                 }
             }
         }
 
         for (org.bukkit.entity.Entity ent : world.getEntities()) {
-            if (ent.hasMetadata("SpeedBuildersMob")) blocksInArena++;
+            if (ent.hasMetadata("SpeedBuildersMob")) {
+                if (Math.abs(ent.getLocation().getBlockX() - cX) <= 3 && Math.abs(ent.getLocation().getBlockZ() - cZ) <= 3) {
+                    blocksInArena++;
+                }
+            }
         }
 
         int expectedBlocks = 0;
@@ -1046,7 +1304,7 @@ public class GameManager {
                     if (savedMatStr.startsWith("MOB_")) {
                         org.bukkit.entity.EntityType expectedType = plugin.getMobManager().getEntityType(savedMatStr.substring(4));
                         boolean found = false;
-                        Location checkLoc = new Location(world, Integer.parseInt(parts[0]) + 0.5, 100 + savedY + 0.5, Integer.parseInt(parts[2]) + 0.5);
+                        Location checkLoc = new Location(world, cX + Integer.parseInt(parts[0]) + 0.5, 100 + savedY + 0.5, cZ + Integer.parseInt(parts[2]) + 0.5);
                         for (org.bukkit.entity.Entity ent : world.getNearbyEntities(checkLoc, 0.5, 0.5, 0.5)) {
                             if (ent.hasMetadata("SpeedBuildersMob") && ent.getType() == expectedType) {
                                 found = true;
@@ -1057,7 +1315,7 @@ public class GameManager {
                         continue;
                     }
 
-                    Block block = world.getBlockAt(Integer.parseInt(parts[0]), 100 + savedY, Integer.parseInt(parts[2]));
+                    Block block = world.getBlockAt(cX + Integer.parseInt(parts[0]), 100 + savedY, cZ + Integer.parseInt(parts[2]));
                     Material savedMat = Material.valueOf(savedMatStr);
                     byte savedData = Byte.parseByte(parts[4]);
                     Material blockMat = block.getType();
@@ -1074,7 +1332,7 @@ public class GameManager {
                     if (savedMat == Material.SKULL || savedMat == Material.SKULL_ITEM) ignoreData = true;
                     if (savedMat.name().contains("PLATE")) ignoreData = true;
                     if (savedMat == Material.DAYLIGHT_DETECTOR || savedMat == Material.DAYLIGHT_DETECTOR_INVERTED) ignoreData = true;
-                    if (savedMat == Material.ENDER_PORTAL_FRAME) ignoreData = true; // <- FIX END PORTAL
+                    if (savedMat == Material.ENDER_PORTAL_FRAME) ignoreData = true;
                     if (cat.equals("FearGames") && (savedMat == Material.PUMPKIN || savedMat == Material.JACK_O_LANTERN)) ignoreData = true;
 
                     if (savedMat == Material.LEAVES || savedMat == Material.LEAVES_2) {
@@ -1100,6 +1358,10 @@ public class GameManager {
         String cat = getCurrentCategory(player);
         List<String> blocksData = getBuildConfig(cat).getStringList("builds." + buildId + ".blocks");
         World world = player.getWorld();
+
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(world, plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
 
         HashMap<String, String> expected = new HashMap<>();
         for (String dataString : blocksData) {
@@ -1131,7 +1393,7 @@ public class GameManager {
             for (int y = 1; y <= 32; y++) {
                 for (int z = -3; z <= 3; z++) {
                     String locKey = x + ";" + y + ";" + z;
-                    Block b = world.getBlockAt(x, 100 + y, z);
+                    Block b = world.getBlockAt(cX + x, 100 + y, cZ + z);
                     String exp = expected.get(locKey);
 
                     if (b.getType() != Material.AIR) {
@@ -1158,7 +1420,7 @@ public class GameManager {
                             if (eMat.name().contains("BANNER") || eMat.name().contains("SKULL")) ignoreData = true;
                             if (eMat.name().contains("PLATE")) ignoreData = true;
                             if (eMat == Material.DAYLIGHT_DETECTOR || eMat == Material.DAYLIGHT_DETECTOR_INVERTED) ignoreData = true;
-                            if (eMat == Material.ENDER_PORTAL_FRAME) ignoreData = true; // <- FIX END PORTAL
+                            if (eMat == Material.ENDER_PORTAL_FRAME) ignoreData = true;
                             if (cat.equals("FearGames") && (eMat == Material.PUMPKIN || eMat == Material.JACK_O_LANTERN)) ignoreData = true;
 
                             boolean error = false;
@@ -1187,9 +1449,10 @@ public class GameManager {
 
         for (org.bukkit.entity.Entity ent : world.getEntities()) {
             if (ent.hasMetadata("SpeedBuildersMob")) {
-                int eX = ent.getLocation().getBlockX();
+                if (Math.abs(ent.getLocation().getBlockX() - cX) > 3 || Math.abs(ent.getLocation().getBlockZ() - cZ) > 3) continue;
+                int eX = ent.getLocation().getBlockX() - cX;
                 int eY = ent.getLocation().getBlockY() - 100;
-                int eZ = ent.getLocation().getBlockZ();
+                int eZ = ent.getLocation().getBlockZ() - cZ;
                 String locKey = eX + ";" + eY + ";" + eZ;
                 String exp = expected.get(locKey);
 
@@ -1206,10 +1469,9 @@ public class GameManager {
         for (Map.Entry<String, String> entry : expected.entrySet()) {
             String[] loc = entry.getKey().split(";");
             String[] matData = entry.getValue().split(";");
-            org.bukkit.Location bLoc = new org.bukkit.Location(world, Integer.parseInt(loc[0]), 100 + Integer.parseInt(loc[1]), Integer.parseInt(loc[2]));
+            org.bukkit.Location bLoc = new org.bukkit.Location(world, cX + Integer.parseInt(loc[0]), 100 + Integer.parseInt(loc[1]), cZ + Integer.parseInt(loc[2]));
 
             if (matData[0].startsWith("MOB_")) {
-                // Spawna particelle rosse invece del vetro
                 player.getWorld().spawnParticle(org.bukkit.Particle.VILLAGER_ANGRY, bLoc.add(0.5, 0.5, 0.5), 5);
                 errorsCount++;
                 continue;
@@ -1236,7 +1498,7 @@ public class GameManager {
                     for (int x = -3; x <= 3; x++) {
                         for (int y = 1; y <= 32; y++) {
                             for (int z = -3; z <= 3; z++) {
-                                Block b = world.getBlockAt(x, 100 + y, z);
+                                Block b = world.getBlockAt(cX + x, 100 + y, cZ + z);
                                 player.sendBlockChange(b.getLocation(), b.getType(), b.getData());
                             }
                         }
@@ -1264,7 +1526,6 @@ public class GameManager {
         inv.setItem(11, creative);
         inv.setItem(15, survival);
 
-        // Contorno
         org.bukkit.inventory.ItemStack filler = new org.bukkit.inventory.ItemStack(Material.STAINED_GLASS_PANE, 1, (byte) 15);
         org.bukkit.inventory.meta.ItemMeta fillerMeta = filler.getItemMeta();
         fillerMeta.setDisplayName(" ");
@@ -1280,25 +1541,25 @@ public class GameManager {
     }
 
     public void resetCustomFloor(Player player) {
-        // Disattiva la modalità custom floor nel config
         plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
         plugin.saveConfig();
 
         int buildId = getCurrentBuild(player);
         if (buildId != -1) {
-            // Se c'è una build caricata, rigenera il pavimento originale di quella specifica mappa
             generateFloor(player, buildId, getCurrentCategory(player));
         } else {
-            // Se l'arena è vuota, rimette l'erba standard su tutto il quadrato 7x7
             org.bukkit.World w = player.getWorld();
+            int plotId = plugin.getPlotManager().getPlot(player);
+            Location centerLoc = plugin.getPlotManager().getPlotCenter(w, plotId);
+            int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
             for (int x = -3; x <= 3; x++) {
                 for (int z = -3; z <= 3; z++) {
-                    org.bukkit.block.Block b = w.getBlockAt(x, 100, z);
+                    org.bukkit.block.Block b = w.getBlockAt(cX + x, 100, cZ + z);
                     b.setType(Material.GRASS);
                     b.setData((byte) 0);
                 }
             }
         }
     }
-
 }

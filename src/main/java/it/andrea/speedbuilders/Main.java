@@ -12,6 +12,7 @@ public class Main extends JavaPlugin {
     private Database database;
     private HologramManager hologramManager;
     private MobManager mobManager;
+    private PlotManager plotManager; // <-- NUOVO SISTEMA PLOT
 
     // Dichiarazione dei file custom
     private FileConfiguration fearConfig;
@@ -84,6 +85,7 @@ public class Main extends JavaPlugin {
             }
         }
 
+        this.plotManager = new PlotManager(this); // <-- INIZIALIZZAZIONE PLOT
         this.hologramManager = new HologramManager(this);
         this.gameManager = new GameManager(this);
         this.mobManager = new MobManager(this);
@@ -112,24 +114,21 @@ public class Main extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Disconnette il database per non lasciare connessioni appese
         if (database != null) {
             database.disconnect();
         }
-
-        // Rimuove l'ologramma per evitare cloni fantasma al reload
         if (hologramManager != null) {
             hologramManager.remove();
         }
-
         getLogger().info("SpeedBuilders disattivato correttamente!");
     }
 
-    // Metodi Getter per accedere ovunque a queste classi e configurazioni
+    // Getter
     public GameManager getGameManager() { return gameManager; }
     public Database getDatabase() { return database; }
     public HologramManager getHologramManager() { return hologramManager; }
     public MobManager getMobManager() { return mobManager; }
+    public PlotManager getPlotManager() { return plotManager; } // <-- GETTER PLOT
 
     public FileConfiguration getFearConfig() { return fearConfig; }
     public FileConfiguration getMineplexConfig() { return mineplexConfig; }

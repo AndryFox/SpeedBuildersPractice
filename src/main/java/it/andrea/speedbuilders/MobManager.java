@@ -67,20 +67,22 @@ public class MobManager implements Listener {
                 org.bukkit.block.Block clicked = event.getClickedBlock();
                 org.bukkit.block.Block target = clicked.getRelative(event.getBlockFace());
 
-                if (!(target.getX() >= -3 && target.getX() <= 3 && target.getZ() >= -3 && target.getZ() <= 3 && target.getY() > 100)) {
+                // MULTIPLAYER FIX: Calcola i limiti in base al plot del giocatore
+                int plotId = plugin.getPlotManager().getPlot(player);
+                Location centerLoc = plugin.getPlotManager().getPlotCenter(player.getWorld(), plotId);
+                int cX = centerLoc.getBlockX();
+                int cZ = centerLoc.getBlockZ();
+
+                if (!(Math.abs(target.getX() - cX) <= 3 && Math.abs(target.getZ() - cZ) <= 3 && target.getY() > 100)) {
                     player.sendMessage("§cPuoi piazzare i mob solo nel riquadro nero!");
                     return;
                 }
 
                 Location spawnLoc = target.getLocation().add(0.5, 0, 0.5);
-
-                // Imposta la rotazione fissa verso Nord
                 spawnLoc.setYaw(180f);
 
                 SpawnEggMeta meta = (SpawnEggMeta) item.getItemMeta();
-
                 Entity entity = player.getWorld().spawnEntity(spawnLoc, meta.getSpawnedType());
-
                 entity.setMetadata("SpeedBuildersMob", new FixedMetadataValue(plugin, true));
 
                 if (entity instanceof LivingEntity) {
@@ -90,7 +92,6 @@ public class MobManager implements Listener {
                     le.setCollidable(false);
                     le.setRemoveWhenFarAway(false);
 
-                    // Forza l'età adulta per tutti i tipi di zombie (inclusi i Pigman)
                     if (entity instanceof org.bukkit.entity.Zombie) {
                         ((org.bukkit.entity.Zombie) entity).setBaby(false);
                     }
@@ -125,7 +126,6 @@ public class MobManager implements Listener {
         }
     }
 
-    // --- NUOVO EVENTO: Impedisce alle statuine di prendere fuoco al sole ---
     @EventHandler
     public void onMobCombust(EntityCombustEvent event) {
         if (event.getEntity().hasMetadata("SpeedBuildersMob")) {

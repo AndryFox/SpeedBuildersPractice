@@ -17,7 +17,7 @@ import java.util.UUID;
 public class HologramManager {
     private final Main plugin;
     private Hologram leaderboardHolo;
-    private Hologram arenaHolo; // Aggiunto per la singola build
+    private Hologram arenaHolo;
 
     public HologramManager(Main plugin) {
         this.plugin = plugin;
@@ -32,7 +32,6 @@ public class HologramManager {
         new BukkitRunnable() {
             @Override
             public void run() {
-                // Recupera dal DB (magari aumentalo a 20 o 30 nel DB se vuoi che raggruppi più persone nella top 10 effettiva)
                 LinkedHashMap<String, Integer> top = plugin.getDatabase().getTopWRHolders(20);
 
                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -48,7 +47,6 @@ public class HologramManager {
                     if (top.isEmpty()) {
                         leaderboardHolo.appendTextLine("§cNessun record trovato.");
                     } else {
-                        // Raggruppa i giocatori con lo stesso numero di WR (Ordine decrescente)
                         TreeMap<Integer, List<String>> grouped = new TreeMap<>(Collections.reverseOrder());
                         for (Map.Entry<String, Integer> entry : top.entrySet()) {
                             grouped.computeIfAbsent(entry.getValue(), k -> new ArrayList<>()).add(entry.getKey());
@@ -56,18 +54,16 @@ public class HologramManager {
 
                         int position = 1;
                         for (Map.Entry<Integer, List<String>> entry : grouped.entrySet()) {
-                            if (position > 10) break; // Mostra solo fino alla decima posizione
+                            if (position > 10) break;
 
                             int wrCount = entry.getKey();
                             List<String> players = entry.getValue();
 
-                            // Applica il colore del ruolo a ciascun nome
                             List<String> coloredNames = new ArrayList<>();
                             for (String pName : players) {
                                 coloredNames.add(getPlayerRoleColor(pName, wrCount) + pName);
                             }
 
-                            // Unisce i nomi con la barra spaziatrice
                             String namesJoined = String.join(" §8/ ", coloredNames);
 
                             String medal;
@@ -89,7 +85,6 @@ public class HologramManager {
         }.runTaskAsynchronously(plugin);
     }
 
-    // Metodo per aggiornare la Top 10 specifica dell'arena (Tempi)
     public void updateArenaHologram(Location loc, int buildId, String category) {
         if (arenaHolo != null && !arenaHolo.isDeleted()) {
             arenaHolo.delete();
@@ -105,24 +100,45 @@ public class HologramManager {
         String recordKey = category + "_" + buildId;
         Map<String, Long> times = new LinkedHashMap<>();
 
-        // Cerca i tempi di tutti i giocatori nel config.yml per questa specifica build
         if (plugin.getConfig().contains("records")) {
             for (String uuidStr : plugin.getConfig().getConfigurationSection("records").getKeys(false)) {
-                if (plugin.getConfig().contains("records." + uuidStr + "." + recordKey)) {
-                    long time = plugin.getConfig().getLong("records." + uuidStr + "." + recordKey);
+                org.bukkit.configuration.ConfigurationSection userSec = plugin.getConfig().getConfigurationSection("records." + uuidStr);
+                if (userSec == null) continue;
 
-                    String playerName = Bukkit.getOfflinePlayer(UUID.fromString(uuidStr)).getName();
-                    if (playerName == null) playerName = "Sconosciuto";
+                for (String key : userSec.getKeys(false)) {
+                    if (key.equals(recordKey) || key.startsWith(recordKey + "_")) {
+                        if (key.endsWith("_tags")) continue;
 
-                    // Legge i tag dal config
-                    String tags = plugin.getConfig().getString("records." + uuidStr + "." + recordKey + "_tags", "");
+                        long rawTime = userSec.getLong(key);
+                        String mode = "normal";
 
-                    // Aggiunge il tag visivo accanto al nome (es: AndryFox_14 fly zen)
-                    if (!tags.isEmpty()) {
-                        playerName += " §8[§7" + tags + "§8]";
+                        if (key.startsWith(recordKey + "_")) {
+                            mode = key.substring(recordKey.length() + 1);
+                        } else {
+                            String oldTags = userSec.getString(recordKey + "_tags", "");
+                            if (oldTags.contains("fly") && oldTags.contains("zen")) mode = "fly_zen";
+                            else if (oldTags.contains("fly")) mode = "fly";
+                            else if (oldTags.contains("zen")) mode = "zen";
+                        }
+
+                        long sortingTime = rawTime;
+                        if ((mode.contains("fly") || mode.contains("fly_zen")) && !category.equalsIgnoreCase("Hypixel")) {
+                            sortingTime += 3000;
+                        }
+
+                        String playerName = Bukkit.getOfflinePlayer(UUID.fromString(uuidStr)).getName();
+                        if (playerName == null) playerName = "Sconosciuto";
+
+                        String displayTags = "";
+                        if (mode.equals("fly")) displayTags = "fly";
+                        else if (mode.equals("zen")) displayTags = "zen";
+                        else if (mode.equals("fly_zen")) displayTags = "zen fly";
+
+                        String entryName = playerName;
+                        if (!displayTags.isEmpty()) entryName += " §8[§7" + displayTags + "§8]";
+
+                        times.put(entryName + ";;" + rawTime, sortingTime);
                     }
-
-                    times.put(playerName, time);
                 }
             }
         }
@@ -130,17 +146,26 @@ public class HologramManager {
         if (times.isEmpty()) {
             arenaHolo.appendTextLine("§cNessun record stabilito.");
         } else {
-            // Ordina dal tempo più basso (più veloce) al più alto
             List<Map.Entry<String, Long>> sortedTimes = new ArrayList<>(times.entrySet());
             sortedTimes.sort(Map.Entry.comparingByValue());
 
             int pos = 1;
             for (Map.Entry<String, Long> entry : sortedTimes) {
                 if (pos > 10) break;
-                double seconds = entry.getValue() / 1000.0;
-                arenaHolo.appendTextLine("§e" + pos + ". §f" + entry.getKey() + " §8- §a" + seconds + "s");
+
+                String[] parts = entry.getKey().split(";;");
+                String displayName = parts[0];
+                double rawSeconds = Long.parseLong(parts[1]) / 1000.0;
+
+                arenaHolo.appendTextLine("§e" + pos + ". §f" + displayName + " §8- §a" + rawSeconds + "s");
                 pos++;
             }
+        }
+    }
+
+    public void deleteArenaHologram() {
+        if (arenaHolo != null && !arenaHolo.isDeleted()) {
+            arenaHolo.delete();
         }
     }
 
@@ -173,11 +198,11 @@ public class HologramManager {
             public void run() {
                 spawnOrUpdate();
             }
-        }.runTaskTimer(plugin, 100L, 3600L); // Ogni 3 minuti
+        }.runTaskTimer(plugin, 100L, 3600L);
     }
 
     public void remove() {
         if (leaderboardHolo != null && !leaderboardHolo.isDeleted()) leaderboardHolo.delete();
-        if (arenaHolo != null && !arenaHolo.isDeleted()) arenaHolo.delete();
+        deleteArenaHologram();
     }
 }

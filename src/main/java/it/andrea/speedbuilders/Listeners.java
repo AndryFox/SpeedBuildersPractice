@@ -2,12 +2,9 @@ package it.andrea.speedbuilders;
 
 import org.bukkit.*;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
-import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -18,10 +15,8 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
 import org.bukkit.event.weather.WeatherChangeEvent;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
 
 import java.util.List;
 
@@ -140,19 +135,20 @@ public class Listeners implements Listener {
         org.bukkit.entity.Player player = event.getPlayer();
         GameManager gm = plugin.getGameManager();
 
-        // Ferma i timer e pulisce i blocchi in aria (Y > 100)
         gm.resetPlayer(player);
-
-        // Disattiva il Custom Floor nel config per sicurezza
         plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
         plugin.saveConfig();
 
-        // Forza la rigenerazione dell'erba di base sul pavimento (Y = 100)
+        plugin.getHologramManager().deleteArenaHologram();
+
         org.bukkit.World w = Bukkit.getWorld("practice");
         if (w != null) {
+            int plotId = plugin.getPlotManager().getPlot(player);
+            Location centerLoc = plugin.getPlotManager().getPlotCenter(w, plotId);
+            int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
             for (int x = -3; x <= 3; x++) {
                 for (int z = -3; z <= 3; z++) {
-                    org.bukkit.block.Block b = w.getBlockAt(x, 100, z);
+                    org.bukkit.block.Block b = w.getBlockAt(cX + x, 100, cZ + z);
                     b.setType(Material.GRASS);
                     b.setData((byte) 0);
                 }
@@ -162,7 +158,7 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onNPCInteract(PlayerInteractEntityEvent event) {
-        if (event.getRightClicked().hasMetadata("NPC")) return; // Ignora se è di Citizens
+        if (event.getRightClicked().hasMetadata("NPC")) return;
 
         if (event.getRightClicked().getCustomName() != null) {
             String npcName = event.getRightClicked().getCustomName();
@@ -184,54 +180,6 @@ public class Listeners implements Listener {
     }
 
     @EventHandler
-    public void onArenaFloorClick(PlayerInteractEvent event) {
-        if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
-            Block clicked = event.getClickedBlock();
-            Player player = event.getPlayer();
-
-            if (clicked != null) {
-                int x = clicked.getX(), y = clicked.getY(), z = clicked.getZ();
-
-                // Controlla che il blocco cliccato si trovi al livello del pavimento (100)
-                if (y == 100 && x >= -4 && x <= 4 && z >= -4 && z <= 4) {
-                    if (!player.getWorld().getName().equals("practice")) return;
-
-                    GameManager gm = plugin.getGameManager();
-                    int buildId = gm.getCurrentBuild(player);
-
-                    boolean isInnerPlot = (x >= -3 && x <= 3 && z >= -3 && z <= 3);
-
-                    if (!isInnerPlot) {
-                        // 1. QUARZO ESTERNO (SOLO SURVIVAL - 3 SECONDI)
-                        if (clicked.getType() == Material.QUARTZ_BLOCK && player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
-                            event.setCancelled(true);
-                            if (buildId != -1) {
-                                gm.forceReset(player);
-                                gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
-                                gm.startCountdown(player, 3); // Solo 3 secondi in survival
-                            } else {
-                                player.sendMessage("§cDevi prima caricare una build con /map load <id> o dall'NPC!");
-                            }
-                        }
-                    } else {
-                        // 2. PAVIMENTO INTERNO (SOLO CREATIVA - AVVIO IMMEDIATO)
-                        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-                            event.setCancelled(true);
-                            if (buildId != -1) {
-                                gm.forceReset(player);
-                                gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
-                                gm.instantReady(player); // Salta il countdown e inizia subito!
-                            } else {
-                                player.sendMessage("§cDevi prima caricare una build con /map load <id> o dall'NPC!");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
         GameManager gm = plugin.getGameManager();
@@ -244,7 +192,6 @@ public class Listeners implements Listener {
 
         String state = gm.getState(player);
 
-        // Se eravamo in attesa, il primo blocco avvia il timer!
         if (state.equals("WAITING_FIRST_BLOCK")) {
             gm.setState(player, "PLAYING");
             gm.startTimer(player);
@@ -267,7 +214,11 @@ public class Listeners implements Listener {
         Block block = event.getBlock();
         if (!block.getWorld().getName().equals("practice")) return;
 
-        if (block.getX() >= -3 && block.getX() <= 3 && block.getZ() >= -3 && block.getZ() <= 3 && block.getY() > 100) {
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(player.getWorld(), plotId);
+        int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
+
+        if (Math.abs(block.getX() - cX) <= 3 && Math.abs(block.getZ() - cZ) <= 3 && block.getY() > 100) {
             if (plugin.getGameManager().getState(player).equals("PLAYING")) {
                 event.setInstaBreak(true);
             }
@@ -276,7 +227,6 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onEntityDamage(EntityDamageEvent event) {
-        // Rende i mob delle build totalmente invincibili a qualsiasi danno
         if (event.getEntity().hasMetadata("SpeedBuildersMob")) {
             event.setCancelled(true);
             return;
@@ -290,7 +240,6 @@ public class Listeners implements Listener {
 
     @EventHandler
     public void onMobInteract(PlayerInteractEntityEvent event) {
-        // Impedisce l'interazione (es. far nascere baby mob con l'uovo)
         if (event.getRightClicked().hasMetadata("SpeedBuildersMob")) {
             event.setCancelled(true);
         }
@@ -320,7 +269,6 @@ public class Listeners implements Listener {
 
         String npcName = org.bukkit.ChatColor.stripColor(rawName).toLowerCase();
 
-        // Aggiunto il fallback di sicurezza: cattura il click anche se Citizens non ha ancora messo i metadata
         if (clicked.hasMetadata("NPC") || npcName.contains("lista build") || npcName.contains("andryfox") || npcName.contains("trova errori") || npcName.contains("guarda build") || npcName.contains("/leave")) {
 
             if (event.isCancelled()) {
@@ -353,14 +301,12 @@ public class Listeners implements Listener {
         String title = event.getView().getTitle();
         Player player = (Player) event.getWhoClicked();
 
-        // 1. MENU: SELEZIONA SERVER
         if (title.equals("§8Seleziona Server")) {
             event.setCancelled(true);
             if (event.getCurrentItem() == null || !event.getCurrentItem().hasItemMeta()) return;
 
             String rawName = org.bukkit.ChatColor.stripColor(event.getCurrentItem().getItemMeta().getDisplayName());
 
-            // Tasto Cerca Globale
             if (event.getCurrentItem().getType() == Material.NAME_TAG && rawName.equals("Cerca Build Globale")) {
                 player.closeInventory();
                 plugin.getGameManager().setAwaitingSearch(player, true);
@@ -373,7 +319,6 @@ public class Listeners implements Listener {
             }
         }
 
-        // 2. MENU: LISTA DELLE MAPPE (- P. )
         if (title.contains("- P. ")) {
             event.setCancelled(true);
             if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
@@ -383,10 +328,10 @@ public class Listeners implements Listener {
             GameManager gm = plugin.getGameManager();
 
             String titleStripped = org.bukkit.ChatColor.stripColor(title);
-            String category = "FearGames"; // Fallback di sicurezza
+            String category = "FearGames";
             String leftPart = titleStripped.split(" - P. ")[0];
             if (leftPart.startsWith("Cerca (") && leftPart.endsWith(")")) {
-                category = leftPart.substring(7, leftPart.length() - 1); // Rimuove "Cerca (" e ")"
+                category = leftPart.substring(7, leftPart.length() - 1);
             } else {
                 category = leftPart;
             }
@@ -397,14 +342,12 @@ public class Listeners implements Listener {
                 if (split.length > 1) currentPage = Integer.parseInt(split[1].trim());
             } catch (Exception ignored) {}
 
-            // Gestione del Tasto Indietro
             if (name.equals("§c§lTorna ai Server")) {
                 player.closeInventory();
                 gm.openCategoryMenu(player);
                 return;
             }
 
-            // Gestione del Tasto Cerca (Reset con tasto destro)
             if (event.getCurrentItem().getType() == Material.NAME_TAG && name.equals("§e§lCerca Build")) {
                 if (event.isRightClick() && gm.hasActiveSearch(player)) {
                     gm.clearSearch(player);
@@ -417,7 +360,6 @@ public class Listeners implements Listener {
                 return;
             }
 
-            // Gestione del Tasto Random
             if (event.getCurrentItem().getType() == Material.ENDER_PEARL && name.equals("§d§lBuild Casuale")) {
                 int randomId = gm.getRandomBuildId(category);
                 if (randomId == -1) {
@@ -435,7 +377,6 @@ public class Listeners implements Listener {
                     player.sendMessage("§eModalità Random Singola attivata!");
                 }
 
-                // Disattiva il Custom Floor solo quando scegli volontariamente dal menu
                 plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
                 plugin.saveConfig();
 
@@ -457,7 +398,6 @@ public class Listeners implements Listener {
             if (lore != null && !lore.isEmpty() && lore.get(0).contains("ID: ")) {
                 String rawId = org.bukkit.ChatColor.stripColor(lore.get(0)).replace("ID: ", "").trim();
 
-                // Legge la categoria dalla Lore se presente (necessario per la ricerca Globale)
                 String targetCategory = category;
                 if (lore.size() > 1 && lore.get(1).contains("Server:")) {
                     targetCategory = org.bukkit.ChatColor.stripColor(lore.get(1)).replace("Server: ", "").trim();
@@ -472,7 +412,7 @@ public class Listeners implements Listener {
                     plugin.saveConfig();
 
                     gm.forceReset(player);
-                    gm.loadBuild(player, id, targetCategory); // <-- Usa la categoria specifica
+                    gm.loadBuild(player, id, targetCategory);
                     gm.readyBuild(player);
                 } catch (Exception ignored) {}
             }
@@ -483,11 +423,12 @@ public class Listeners implements Listener {
     public void onDoubleJump(PlayerToggleFlightEvent event) {
         Player player = event.getPlayer();
 
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
-
         if (!plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) return;
 
-        if (player.getLocation().getX() < -30 || player.getLocation().getX() > 30) {
+        int plotId = plugin.getPlotManager().getPlot(player);
+        Location centerLoc = plugin.getPlotManager().getPlotCenter(player.getWorld(), plotId);
+
+        if (Math.abs(player.getLocation().getX() - centerLoc.getBlockX()) > 30 || Math.abs(player.getLocation().getZ() - centerLoc.getBlockZ()) > 30) {
             player.sendMessage("§cSei troppo lontano dalla tua isola per usare il Double Jump. Usa /fly.");
             return;
         }
@@ -508,7 +449,6 @@ public class Listeners implements Listener {
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
 
         if (plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
             if (player.getLocation().subtract(0, 0.1, 0).getBlock().getType().isSolid()) {
@@ -555,6 +495,14 @@ public class Listeners implements Listener {
                 event.setLine(3, "");
             }
         }
+        else if (line0.equalsIgnoreCase("Replay") || line0.equalsIgnoreCase("[Replay]")) {
+            if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
+                event.setLine(0, "");
+                event.setLine(1, "§b§lReplay");
+                event.setLine(2, "");
+                event.setLine(3, "");
+            }
+        }
     }
 
     @EventHandler
@@ -583,12 +531,22 @@ public class Listeners implements Listener {
             else if (line1.equalsIgnoreCase("Timer")) {
                 event.setCancelled(true);
                 String current = plugin.getGameManager().getTimerMode(player);
+
                 if (current.equals("FIRST_BLOCK")) {
                     plugin.getGameManager().setTimerMode(player, "COUNTDOWN");
-                    player.sendMessage("§a§l[!] §aModalità Timer: §eCOUNTDOWN");
+                    player.sendMessage("§a§l[!] §aModalità Timer: §eCOUNTDOWN (ZEN)");
                 } else {
                     plugin.getGameManager().setTimerMode(player, "FIRST_BLOCK");
                     player.sendMessage("§a§l[!] §aModalità Timer: §ePRIMO BLOCCO");
+                }
+
+                if (player.getWorld().getName().equals("practice")) {
+                    int buildId = plugin.getGameManager().getCurrentBuild(player);
+                    if (buildId != -1) {
+                        plugin.getGameManager().forceReset(player);
+                        plugin.getGameManager().loadBuild(player, buildId, plugin.getGameManager().getCurrentCategory(player));
+                        plugin.getGameManager().readyBuild(player);
+                    }
                 }
             }
             else if (line1.equalsIgnoreCase("Modalità")) {
@@ -603,17 +561,28 @@ public class Listeners implements Listener {
                     player.sendMessage("§a§l[!] §aModalità Costruttore (Creativa) attivata!");
                 }
             }
+            else if (line1.equalsIgnoreCase("Replay")) {
+                event.setCancelled(true);
+                GameManager gm = plugin.getGameManager();
+                int buildId = gm.getCurrentBuild(player);
+                if (buildId != -1) {
+                    gm.forceReset(player);
+                    gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
+                    gm.readyBuild(player);
+                } else {
+                    player.sendMessage("§cDevi prima caricare una build con /map load <id> o dall'NPC!");
+                }
+            }
         }
     }
 
-    // Cattura la chat per la ricerca delle build
     @EventHandler(priority = org.bukkit.event.EventPriority.LOWEST)
     public void onChatSearch(org.bukkit.event.player.AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
         GameManager gm = plugin.getGameManager();
 
         if (gm.isAwaitingSearch(player)) {
-            event.setCancelled(true); // Blocca il messaggio in chat pubblica
+            event.setCancelled(true);
             String query = event.getMessage();
 
             gm.setAwaitingSearch(player, false);
@@ -625,9 +594,21 @@ public class Listeners implements Listener {
             }
 
             gm.setActiveSearch(player, query);
-            // Apre il menu globalmente usando la parola chiave "Global"
             Bukkit.getScheduler().runTask(plugin, () -> gm.openBuildMenu(player, 1, "Global"));
         }
     }
 
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGH)
+    public void onPlayerChatFormat(org.bukkit.event.player.AsyncPlayerChatEvent event) {
+        if (plugin.getGameManager().isAwaitingSearch(event.getPlayer())) return;
+
+        Player player = event.getPlayer();
+        String prefix = "§7Giocatore";
+
+        if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
+            prefix = "§cAdmin";
+        }
+
+        event.setFormat(prefix + " §8| §f" + player.getName() + "§8: §7" + event.getMessage());
+    }
 }

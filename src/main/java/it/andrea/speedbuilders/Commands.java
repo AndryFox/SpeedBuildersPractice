@@ -8,10 +8,6 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import net.md_5.bungee.api.chat.ClickEvent;
-import net.md_5.bungee.api.chat.ComponentBuilder;
-import net.md_5.bungee.api.chat.HoverEvent;
-import net.md_5.bungee.api.chat.TextComponent;
 
 public class Commands implements CommandExecutor {
 
@@ -44,11 +40,6 @@ public class Commands implements CommandExecutor {
         }
 
         if (cmdName.equals("fly")) {
-            if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-                player.sendMessage("§cSei in Creativa, il volo è già forzato dal gioco!");
-                return true;
-            }
-
             if (player.isFlying()) {
                 player.setAllowFlight(false);
                 player.setFlying(false);
@@ -58,26 +49,25 @@ public class Commands implements CommandExecutor {
                 player.setFlying(true);
                 player.sendMessage("§aVolo attivato!");
 
-                // Segna l'uso della fly se attivata a round in corso
-                if (plugin.getGameManager().getState(player).equals("PLAYING")) {
-                    plugin.getGameManager().setUsedFly(player, true);
-                }
-
                 if (plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false)) {
                     plugin.getConfig().set("players." + player.getUniqueId() + ".dj", false);
                     plugin.saveConfig();
                     player.sendMessage("§8§o(Double Jump disattivato in automatico)");
                 }
             }
+
+            if (player.getWorld().getName().equals("practice")) {
+                int buildId = gm.getCurrentBuild(player);
+                if (buildId != -1) {
+                    gm.forceReset(player);
+                    gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
+                    gm.readyBuild(player);
+                }
+            }
             return true;
         }
 
         if (cmdName.equals("dj")) {
-            if (plugin.getGameManager().getState(player).equals("PLAYING")) {
-                player.sendMessage("§cNon puoi usare il Double Jump mentre giochi!");
-                return true;
-            }
-
             boolean djState = !plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".dj", false);
             plugin.getConfig().set("players." + player.getUniqueId() + ".dj", djState);
             plugin.saveConfig();
@@ -92,6 +82,15 @@ public class Commands implements CommandExecutor {
             } else {
                 if (!player.isFlying()) {
                     player.setAllowFlight(false);
+                }
+            }
+
+            if (player.getWorld().getName().equals("practice")) {
+                int buildId = gm.getCurrentBuild(player);
+                if (buildId != -1) {
+                    gm.forceReset(player);
+                    gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
+                    gm.readyBuild(player);
                 }
             }
             return true;
@@ -137,12 +136,30 @@ public class Commands implements CommandExecutor {
                 player.sendMessage("§cErrore: Il mondo 'practice' non esiste.");
                 return true;
             }
-            gm.resetPlayer(player);
-            player.teleport(new Location(practiceWorld, 0.5, 101, 5.5, 180f, 35f));
 
-            // Imposta in Survival direttamente e pulisce l'inventario
+            gm.resetPlayer(player);
+            gm.resetCustomFloor(player);
+            gm.clearCurrentCategory(player);
+
+            // MULTIPLAYER FIX: Calcola il teleport nel plot personale
+            int plotId = plugin.getPlotManager().getPlot(player);
+            Location centerLoc = plugin.getPlotManager().getPlotCenter(practiceWorld, plotId);
+            int cX = centerLoc.getBlockX();
+            int cZ = centerLoc.getBlockZ();
+
+            // --- AUTO-GENERAZIONE DELL'ISOLA ---
+            // Se al centro del pavimento (Y=100) non c'è niente, significa che l'isola non esiste!
+            if (practiceWorld.getBlockAt(cX, 100, cZ).getType() == Material.AIR) {
+                gm.setupIsland(player);
+            } else {
+                player.teleport(new Location(practiceWorld, cX + 0.5, 101, cZ + 7.5, 180f, 0f));
+            }
+
             player.setGameMode(org.bukkit.GameMode.SURVIVAL);
             player.getInventory().clear();
+
+            plugin.getConfig().set("players." + player.getUniqueId() + ".dj", true);
+            plugin.saveConfig();
             player.setAllowFlight(true);
             player.setFlying(false);
 
@@ -179,7 +196,7 @@ public class Commands implements CommandExecutor {
 
                 plugin.getConfig().set("custom_categories." + name + ".ip", ip);
                 plugin.getConfig().set("custom_categories." + name + ".name", name);
-                plugin.getConfig().set("custom_categories." + name + ".icon", "STAINED_CLAY;3"); // Azzurro di default
+                plugin.getConfig().set("custom_categories." + name + ".icon", "STAINED_CLAY;3");
                 plugin.saveConfig();
 
                 plugin.getGameManager().getBuildConfig(name);
@@ -190,7 +207,6 @@ public class Commands implements CommandExecutor {
                 for (int i = 1; i < args.length; i++) nameBuilder.append(args[i]).append(" ");
                 String name = nameBuilder.toString().trim();
 
-                // Consente di modificare FearGames, Mineplex o qualsiasi server custom
                 if (!name.equalsIgnoreCase("FearGames") && !name.equalsIgnoreCase("Mineplex") && !plugin.getConfig().contains("custom_categories." + name)) {
                     player.sendMessage("§cLa categoria '" + name + "' non esiste!");
                     return true;
@@ -206,7 +222,6 @@ public class Commands implements CommandExecutor {
                 String iconData = inHand.getType().name() + ";" + inHand.getDurability();
                 plugin.getConfig().set("custom_categories." + name + ".icon", iconData);
 
-                // Salva il nome anche se stiamo modificando quelli base per la prima volta
                 plugin.getConfig().set("custom_categories." + name + ".name", name);
                 plugin.saveConfig();
                 player.sendMessage("§aIcona di §l" + name + " §aaggiornata con successo!");
@@ -323,7 +338,6 @@ public class Commands implements CommandExecutor {
                     break;
                 case "resetfloor":
                     if (!player.isOp()) return true;
-                    // Questo richiama il metodo per ripristinare l'erba
                     plugin.getGameManager().resetCustomFloor(player);
                     player.sendMessage("§aPavimento ripristinato a quello di default!");
                     break;
@@ -334,7 +348,6 @@ public class Commands implements CommandExecutor {
                     for (int i = 2; i < args.length; i++) sb.append(args[i]).append(" ");
                     String buildName = sb.toString().trim();
 
-                    // Salva in una categoria fittizia "Review" aggiungendo la categoria richiesta nel nome
                     int reviewId = 1;
                     org.bukkit.configuration.file.FileConfiguration reviewCfg = gm.getBuildConfig("Review");
                     if (reviewCfg.contains("builds")) {
@@ -342,7 +355,6 @@ public class Commands implements CommandExecutor {
                             try { if (Integer.parseInt(key) >= reviewId) reviewId = Integer.parseInt(key) + 1; } catch (Exception ignored) {}
                         }
                     }
-                    // La salva come: "Casetta [FearGames]" nel file review_builds.yml
                     gm.saveBuild(player, reviewId, buildName + " [" + targetCat + "]", "Review");
                     player.sendMessage("§aBuild '" + buildName + "' inviata con successo agli Admin per l'approvazione!");
                     break;
