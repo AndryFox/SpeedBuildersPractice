@@ -2,6 +2,7 @@ name: SpeedBuildersPractice
 version: 1.0
 main: it.andrea.speedbuilders.Main
 depend: [HolographicDisplays]
+softdepend: [Citizens]
 commands:
   gmc:
     description: Mette in creativa

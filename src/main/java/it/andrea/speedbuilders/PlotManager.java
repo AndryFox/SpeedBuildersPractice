@@ -11,13 +11,12 @@ public class PlotManager {
 
     private final Main plugin;
     private final HashMap<UUID, Integer> playerPlots = new HashMap<>();
-    private int nextPlotId = 0; // Il Plot 0 è il centro esatto. Plot 1-6 sono il primo anello, 7-18 il secondo, ecc.
+    private int nextPlotId = 0;
 
     public PlotManager(Main plugin) {
         this.plugin = plugin;
     }
 
-    // Assegna un plot univoco al giocatore se non ne ha uno
     public int getPlot(Player player) {
         UUID uuid = player.getUniqueId();
         if (!playerPlots.containsKey(uuid)) {
@@ -27,27 +26,20 @@ public class PlotManager {
         return playerPlots.get(uuid);
     }
 
-    // Calcola il centro esatto di un plot usando la matematica degli anelli radiali
     public Location getPlotCenter(World world, int plotId) {
-        // Plot 0 al centro assoluto
-        if (plotId == 0) {
-            return new Location(world, 0.5, 100, 0.5);
-        }
-
-        int currentPlot = 1;
+        // Nessun plot a 0, 100, 0! Il centro dell'arena è riservato.
+        // Partiamo direttamente dal primo anello a raggio 50.
+        int currentPlot = 0;
         int ring = 1;
 
         while (true) {
-            // Calcola quanti plot entrano in questo anello mantenendo 50 blocchi di distanza
             int plotsInRing = (int) Math.round(2 * Math.PI * ring);
 
             if (plotId < currentPlot + plotsInRing) {
-                // Abbiamo trovato in quale anello si trova il plot!
                 int positionInRing = plotId - currentPlot;
 
-                // Calcola l'angolo e la distanza dal centro
                 double angle = (2 * Math.PI / plotsInRing) * positionInRing;
-                double radius = ring * 50.0; // Distanza fissa di 50 blocchi per ogni anello
+                double radius = ring * 50.0;
 
                 double x = radius * Math.cos(angle);
                 double z = radius * Math.sin(angle);

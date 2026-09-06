@@ -234,29 +234,28 @@ public class GameManager {
                 }
 
                 if (x >= -3 && x <= 3 && z >= -3 && z <= 3) {
-                    topBlock.setType(Material.STAINED_GLASS); topBlock.setData((byte) 15);
+                    topBlock.setType(Material.GRASS); topBlock.setData((byte) 0);
                     Block underBlock = practiceWorld.getBlockAt(cX + x, centerY - 1, cZ + z);
-                    underBlock.setType(Material.WOOD); underBlock.setData((byte) 1);
+                    underBlock.setType(Material.DIRT); underBlock.setData((byte) 0);
                 } else {
                     topBlock.setType(Material.QUARTZ_BLOCK);
                 }
             }
         }
 
-        // --- 3. SPAWN AUTOMATICO DEI 5 CARTELLI FLUTTUANTI ---
+        // --- 3. SPAWN AUTOMATICO DEI 5 CARTELLI FLUTTUANTI (Sfondo Z: -5) ---
 
         // Cartello Replay (Centro in basso, Y=101)
-        Block replayBlock = practiceWorld.getBlockAt(cX, 101, cZ + 5);
+        Block replayBlock = practiceWorld.getBlockAt(cX, 101, cZ - 5);
         replayBlock.setType(Material.WALL_SIGN);
         replayBlock.setData((byte) 3); // Faccia verso Sud (verso il giocatore)
         org.bukkit.block.Sign replaySign = (org.bukkit.block.Sign) replayBlock.getState();
         replaySign.setLine(1, "§b§lReplay");
         replaySign.update();
 
-        // --- Cartelli in alto (Y=102) ---
-
-        // 1. Floor (Sinistra esterna)
-        Block floorBlock = practiceWorld.getBlockAt(cX - 2, 102, cZ + 5);
+        // --- Cartelli in alto a sinistra (Y=102) ---
+        // 1. Floor
+        Block floorBlock = practiceWorld.getBlockAt(cX - 2, 102, cZ - 5);
         floorBlock.setType(Material.WALL_SIGN);
         floorBlock.setData((byte) 3);
         org.bukkit.block.Sign floorSign = (org.bukkit.block.Sign) floorBlock.getState();
@@ -264,8 +263,8 @@ public class GameManager {
         floorSign.setLine(3, "§lRaymano");
         floorSign.update();
 
-        // 2. Building (Sinistra interna)
-        Block buildingBlock = practiceWorld.getBlockAt(cX - 1, 102, cZ + 5);
+        // 2. Building
+        Block buildingBlock = practiceWorld.getBlockAt(cX - 1, 102, cZ - 5);
         buildingBlock.setType(Material.WALL_SIGN);
         buildingBlock.setData((byte) 3);
         org.bukkit.block.Sign buildingSign = (org.bukkit.block.Sign) buildingBlock.getState();
@@ -273,42 +272,68 @@ public class GameManager {
         buildingSign.setLine(3, "§lNever Dies");
         buildingSign.update();
 
-        // 3. Timer (Destra interna)
-        Block timerBlock = practiceWorld.getBlockAt(cX + 1, 102, cZ + 5);
+        // --- Cartelli in alto a destra (Y=102) ---
+        // 3. Timer
+        Block timerBlock = practiceWorld.getBlockAt(cX + 1, 102, cZ - 5);
         timerBlock.setType(Material.WALL_SIGN);
         timerBlock.setData((byte) 3);
         org.bukkit.block.Sign timerSign = (org.bukkit.block.Sign) timerBlock.getState();
         timerSign.setLine(1, "§c§lTimer");
         timerSign.update();
 
-        // 4. Modalità (Destra esterna)
-        Block modeBlock = practiceWorld.getBlockAt(cX + 2, 102, cZ + 5);
+        // 4. Modalità
+        Block modeBlock = practiceWorld.getBlockAt(cX + 2, 102, cZ - 5);
         modeBlock.setType(Material.WALL_SIGN);
         modeBlock.setData((byte) 3);
         org.bukkit.block.Sign modeSign = (org.bukkit.block.Sign) modeBlock.getState();
         modeSign.setLine(1, "§a§lModalità");
         modeSign.update();
 
-        // --- 4. SPAWN AUTOMATICO NPC ---
-        Location npcLoc = new Location(practiceWorld, cX + 0.5, 101, cZ + 6.5, 180f, 0f);
-        boolean npcExists = false;
-        // Evita di spawnare cloni se l'NPC esiste già
-        for (org.bukkit.entity.Entity e : practiceWorld.getNearbyEntities(npcLoc, 1, 2, 1)) {
-            if (e.getType() == org.bukkit.entity.EntityType.VILLAGER) npcExists = true;
+        // --- 4. SPAWN AUTOMATICO DEI 4 NPC CON CITIZENS ---
+        net.citizensnpcs.api.npc.NPCRegistry registry = net.citizensnpcs.api.CitizensAPI.getNPCRegistry();
+
+        // Formato: X, Y, Z, Yaw, Nome, NomePlayerDellaSkin
+        Object[][] npcs = {
+                {cX - 6 + 0.5, 101.0, cZ + 6 + 0.5, -45f, "§c§l/leave", "MHF_Exclamation"},
+                {cX - 8 + 0.5, 101.0, cZ + 3 + 0.5, -90f, "§e§lLista Build", "AndryFox_14"},
+                {cX - 8 + 0.5, 101.0, cZ + 0.5, -90f, "§c§lTrova Errori", "Notch"},
+                {cX - 8 + 0.5, 101.0, cZ - 3 + 0.5, -90f, "§b§lGuarda Build", "jeb_"}
+        };
+
+        for (Object[] npcData : npcs) {
+            double nx = (double) npcData[0];
+            double ny = (double) npcData[1];
+            double nz = (double) npcData[2];
+            float nyaw = (float) npcData[3];
+            String nName = (String) npcData[4];
+            String skinName = (String) npcData[5];
+
+            Location npcLoc = new Location(practiceWorld, nx, ny, nz, nyaw, 0f);
+
+            // Verifica se esiste già un NPC di Citizens in quella posizione precisa per non duplicarlo
+            boolean exists = false;
+            for (net.citizensnpcs.api.npc.NPC existing : registry) {
+                if (existing.isSpawned() && existing.getStoredLocation().getWorld().equals(practiceWorld)) {
+                    if (existing.getStoredLocation().distanceSquared(npcLoc) < 1.0) {
+                        exists = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!exists) {
+                net.citizensnpcs.api.npc.NPC npc = registry.createNPC(org.bukkit.entity.EntityType.PLAYER, nName);
+
+                // Imposta la skin dal nome dell'account Minecraft
+                net.citizensnpcs.trait.SkinTrait skinTrait = npc.getOrAddTrait(net.citizensnpcs.trait.SkinTrait.class);
+                skinTrait.setSkinName(skinName);
+
+                npc.spawn(npcLoc);
+            }
         }
 
-        if (!npcExists) {
-            org.bukkit.entity.Villager npc = (org.bukkit.entity.Villager) practiceWorld.spawnEntity(npcLoc, org.bukkit.entity.EntityType.VILLAGER);
-            npc.setCustomName("§e§lLista Build");
-            npc.setCustomNameVisible(true);
-            npc.setAI(false);
-            npc.setInvulnerable(true);
-            npc.setCollidable(false);
-            npc.setSilent(true);
-            npc.setMetadata("MenuNPC", new org.bukkit.metadata.FixedMetadataValue(plugin, true));
-        }
-
-        Location spawnIsland = new Location(practiceWorld, cX + 0.5, 101, cZ + 5.5, 180f, 35f);
+        // Il giocatore spawna a cZ + 7.5 per avere un'ottima visuale dell'arena e dei cartelli
+        Location spawnIsland = new Location(practiceWorld, cX + 0.5, 101, cZ + 7.5, 180f, 0f);
         player.teleport(spawnIsland);
         player.sendMessage("§bIsola §e(Plot ID: " + plotId + ") §bgenerata con successo!");
     }
