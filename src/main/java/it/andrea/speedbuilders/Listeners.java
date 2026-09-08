@@ -186,7 +186,7 @@ public class Listeners implements Listener {
                         // 2. Prepara il testo per la Tablist (aggiunge Admin se necessario)
                         String tabPrefix = chatPrefix;
                         if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
-                            tabPrefix = "§cAdmin §8- " + tabPrefix;
+                            tabPrefix = "§cOwner §8- " + tabPrefix;
                         }
 
                         // 3. Imposta la Tablist (bypassa il limite di 16 caratteri!)
