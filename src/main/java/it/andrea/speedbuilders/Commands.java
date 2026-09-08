@@ -168,6 +168,12 @@ public class Commands implements CommandExecutor {
         }
 
         if (cmdName.equals("lobby")) {
+            // NOVITÀ: Distrugge l'isola e libera il plot prima di mandarlo alla lobby!
+            if (player.getWorld().getName().equals("practice")) {
+                gm.clearIsland(player);
+                gm.resetPlayer(player);
+            }
+
             if (plugin.getConfig().contains("locations.lobby")) {
                 player.teleport((Location) plugin.getConfig().get("locations.lobby"));
                 player.sendMessage("§aTeletrasportato alla Lobby!");

@@ -82,80 +82,7 @@ public class GameManager {
     }
 
     public void updateScoreboard(Player player) {
-        if (!player.getWorld().getName().equals("practice")) {
-            player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
-            return;
-        }
-
-        org.bukkit.scoreboard.ScoreboardManager manager = Bukkit.getScoreboardManager();
-        org.bukkit.scoreboard.Scoreboard board = manager.getNewScoreboard();
-        org.bukkit.scoreboard.Objective obj = board.registerNewObjective("speedbuilders", "dummy");
-        obj.setDisplaySlot(org.bukkit.scoreboard.DisplaySlot.SIDEBAR);
-
-        obj.setDisplayName("§aIn Gioco");
-
-        int buildId = getCurrentBuild(player);
-        String cat = getCurrentCategory(player);
-        String bName = buildId != -1 ? getBuildConfig(cat).getString("builds." + buildId + ".name", "Nessuna") : "Nessuna";
-        String timerMode = getTimerMode(player).equals("COUNTDOWN") ? "Zen" : "Classica";
-        String state = getState(player);
-
-        String stateFormat = "In Attesa";
-        if (state.equals("PLAYING")) stateFormat = "In Gioco";
-        else if (state.equals("COUNTDOWN")) stateFormat = "Osservazione";
-        else if (state.equals("SHOWING_NAME")) stateFormat = "Memorizzazione";
-        else if (state.equals("WAITING_FIRST_BLOCK")) stateFormat = "Attesa blocco";
-
-        obj.getScore("§1").setScore(11);
-        obj.getScore("§6Mappa: §a" + bName).setScore(10);
-        obj.getScore("§6Server: §e" + cat).setScore(9);
-
-        obj.getScore("§2").setScore(8);
-        obj.getScore("§6Stato: §6" + stateFormat).setScore(7);
-        obj.getScore("§6Modalità: §d" + timerMode).setScore(6);
-
-        String prStr = "Nessuno";
-        String wrStr = "Nessuno";
-
-        if (buildId != -1) {
-            String recordKey = cat + "_" + buildId;
-            long pr = -1;
-            long wr = -1;
-
-            if (plugin.getConfig().contains("records")) {
-                for (String uuidStr : plugin.getConfig().getConfigurationSection("records").getKeys(false)) {
-                    org.bukkit.configuration.ConfigurationSection userSec = plugin.getConfig().getConfigurationSection("records." + uuidStr);
-                    if (userSec == null) continue;
-
-                    for (String key : userSec.getKeys(false)) {
-                        if (key.equals(recordKey) || key.startsWith(recordKey + "_")) {
-                            if (key.endsWith("_tags")) continue;
-                            long time = userSec.getLong(key);
-
-                            long timeForWr = time;
-                            String mode = key.startsWith(recordKey + "_") ? key.substring(recordKey.length() + 1) : "normal";
-                            if (mode.contains("fly") && !cat.equalsIgnoreCase("Hypixel")) timeForWr += 3000;
-
-                            if (uuidStr.equals(player.getUniqueId().toString())) {
-                                if (pr == -1 || time < pr) pr = time;
-                            }
-                            if (wr == -1 || timeForWr < wr) wr = timeForWr;
-                        }
-                    }
-                }
-            }
-            if (pr != -1) prStr = (pr / 1000.0) + "s";
-            if (wr != -1) wrStr = (wr / 1000.0) + "s";
-        }
-
-        obj.getScore("§3").setScore(5);
-        obj.getScore("§6Record Tuo: §a" + prStr).setScore(4);
-        obj.getScore("§6Record WR: §a" + wrStr).setScore(3);
-
-        obj.getScore("§4").setScore(2);
-        obj.getScore("§6sbpractice.falix.gg").setScore(1);
-
-        player.setScoreboard(board);
+        plugin.getUIManager().updateScoreboard(player);
     }
 
     public void forceReset(Player player) {
@@ -236,7 +163,7 @@ public class GameManager {
                 if (x >= -3 && x <= 3 && z >= -3 && z <= 3) {
                     topBlock.setType(Material.GRASS); topBlock.setData((byte) 0);
                     Block underBlock = practiceWorld.getBlockAt(cX + x, centerY - 1, cZ + z);
-                    underBlock.setType(Material.DIRT); underBlock.setData((byte) 0);
+                    underBlock.setType(Material.WOOD); underBlock.setData((byte) 1); // 1 = Spruce Wood
                 } else {
                     topBlock.setType(Material.QUARTZ_BLOCK);
                 }
@@ -292,9 +219,8 @@ public class GameManager {
         // --- 4. SPAWN AUTOMATICO DEI 4 NPC CON CITIZENS ---
         net.citizensnpcs.api.npc.NPCRegistry registry = net.citizensnpcs.api.CitizensAPI.getNPCRegistry();
 
-        // Formato: X, Y, Z, Yaw, Nome, NomePlayerDellaSkin
         Object[][] npcs = {
-                {cX - 6 + 0.5, 101.0, cZ + 6 + 0.5, -45f, "§c§l/leave", "MHF_Exclamation"},
+                {cX - 6 + 0.5, 101.0, cZ + 6 + 0.5, -135f, "§c§l/leave", "MHF_Exclamation"},
                 {cX - 8 + 0.5, 101.0, cZ + 3 + 0.5, -90f, "§e§lLista Build", "AndryFox_14"},
                 {cX - 8 + 0.5, 101.0, cZ + 0.5, -90f, "§c§lTrova Errori", "Notch"},
                 {cX - 8 + 0.5, 101.0, cZ - 3 + 0.5, -90f, "§b§lGuarda Build", "jeb_"}
@@ -308,9 +234,9 @@ public class GameManager {
             String nName = (String) npcData[4];
             String skinName = (String) npcData[5];
 
-            Location npcLoc = new Location(practiceWorld, nx, ny, nz, nyaw, 0f);
+            org.bukkit.Location npcLoc = new org.bukkit.Location(practiceWorld, nx, ny, nz, nyaw, 0f);
 
-            // Verifica se esiste già un NPC di Citizens in quella posizione precisa per non duplicarlo
+            // Verifica se esiste già
             boolean exists = false;
             for (net.citizensnpcs.api.npc.NPC existing : registry) {
                 if (existing.isSpawned() && existing.getStoredLocation().getWorld().equals(practiceWorld)) {
@@ -323,17 +249,13 @@ public class GameManager {
 
             if (!exists) {
                 net.citizensnpcs.api.npc.NPC npc = registry.createNPC(org.bukkit.entity.EntityType.PLAYER, nName);
-
-                // Imposta la skin dal nome dell'account Minecraft
-                net.citizensnpcs.trait.SkinTrait skinTrait = npc.getOrAddTrait(net.citizensnpcs.trait.SkinTrait.class);
-                skinTrait.setSkinName(skinName);
-
+                npc.data().set("player-skin-name", skinName);
                 npc.spawn(npcLoc);
             }
         }
 
-        // Il giocatore spawna a cZ + 7.5 per avere un'ottima visuale dell'arena e dei cartelli
-        Location spawnIsland = new Location(practiceWorld, cX + 0.5, 101, cZ + 7.5, 180f, 0f);
+        // Spawn del giocatore
+        org.bukkit.Location spawnIsland = new org.bukkit.Location(practiceWorld, cX + 0.5, 101, cZ + 7.5, 180f, 0f);
         player.teleport(spawnIsland);
         player.sendMessage("§bIsola §e(Plot ID: " + plotId + ") §bgenerata con successo!");
     }
@@ -611,7 +533,7 @@ public class GameManager {
         Location centerLoc = plugin.getPlotManager().getPlotCenter(world, plotId);
         int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
 
-        // Pulisce i blocchi del plot
+        // Pulisce i blocchi del plot (zona di costruzione 7x7)
         for (int x = -3; x <= 3; x++) {
             for (int y = 1; y <= 32; y++) {
                 for (int z = -3; z <= 3; z++) {
@@ -783,8 +705,13 @@ public class GameManager {
         else if (isZen) modeKey = "zen";
 
         double seconds = elapsed / 1000.0;
-        player.sendTitle("", "§aCostruzione perfetta! §8| §fTempo: §e" + seconds + "s", 5, 40, 10);
+
+        // TITLE AGGIORNATO (Nome + Tempo)
+        player.sendTitle("§a" + player.getName(), "§7Tempo: §e" + seconds + "s", 10, 40, 10);
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+
+        // MESSAGGIO IN CHAT PER TUTTI
+        Bukkit.broadcastMessage("§7" + player.getName() + " ha completato in " + seconds + "s");
 
         int buildId = currentBuild.getOrDefault(player, -1);
 
@@ -811,9 +738,22 @@ public class GameManager {
             long timeForWR = elapsed;
             if (modeKey.contains("fly") && !cat.equalsIgnoreCase("Hypixel")) timeForWR += 3000;
 
-            if (currentWR == -1 || timeForWR < currentWR) {
-                String bName = getBuildConfig(cat).getString("builds." + buildId + ".name", "Sconosciuta");
+            String recordKey = cat + "_" + buildId + "_" + modeKey;
+            String recordPath = "records." + player.getUniqueId().toString() + "." + recordKey;
+            long currentRecord = plugin.getConfig().getLong(recordPath, 0);
 
+            boolean isFirstTime = (currentRecord == 0);
+            boolean isWorldRecord = (currentWR == -1 || timeForWR < currentWR);
+
+            // Salvataggio database
+            if (isFirstTime || elapsed < currentRecord) {
+                plugin.getConfig().set(recordPath, elapsed);
+                plugin.saveConfig();
+            }
+
+            // Logica Messaggi
+            if (isWorldRecord) {
+                String bName = getBuildConfig(cat).getString("builds." + buildId + ".name", "Sconosciuta");
                 String diffText;
                 if (currentWR == -1) {
                     diffText = "§8(§aPrimo record assoluto!§8)";
@@ -821,23 +761,15 @@ public class GameManager {
                     double diff = (currentWR - timeForWR) / 1000.0;
                     diffText = String.format(java.util.Locale.US, "§8(§c%.3fs §8-> §a%.3fs §8| §e-%.3fs§8)", (currentWR / 1000.0), (timeForWR / 1000.0), diff);
                 }
-
                 net.md_5.bungee.api.chat.TextComponent msg = new net.md_5.bungee.api.chat.TextComponent("§8[§bPractice§8] §e" + player.getName() + " §7ha stabilito il nuovo §6§lWorld Record §7su §a" + bName + "§7! " + diffText);
 
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     p.spigot().sendMessage(msg);
                     p.playSound(p.getLocation(), Sound.ENTITY_ENDERDRAGON_GROWL, 0.5f, 1.5f);
                 }
-            }
-
-            String recordKey = cat + "_" + buildId + "_" + modeKey;
-            String recordPath = "records." + player.getUniqueId().toString() + "." + recordKey;
-            long currentRecord = plugin.getConfig().getLong(recordPath, 0);
-
-            if (currentRecord == 0 || elapsed < currentRecord) {
-                plugin.getConfig().set(recordPath, elapsed);
-                plugin.saveConfig();
-                player.sendMessage(currentRecord == 0 ? "§b§lRecord Personale: §f" + seconds + "s" : "§b§lRecord Personale: §f" + seconds + "s §7(" + (currentRecord / 1000.0) + "s -> " + seconds + "s)");
+            } else if (!isFirstTime && elapsed < currentRecord) {
+                // Manda il record personale SOLO se non è la prima volta che gioca questa mappa!
+                player.sendMessage("§a§lNuovo record personale! §7(Precedente: " + (currentRecord / 1000.0) + "s)");
             }
 
             updateScoreboard(player);
@@ -1586,5 +1518,40 @@ public class GameManager {
                 }
             }
         }
+    }
+
+    // --- NUOVO METODO PER RADERE AL SUOLO L'ISOLA E RICICLARE IL PLOT ---
+    public void clearIsland(Player player) {
+        int plotId = plugin.getPlotManager().getPlot(player);
+        World practiceWorld = Bukkit.getWorld("practice");
+        if (practiceWorld == null) return;
+
+        Location center = plugin.getPlotManager().getPlotCenter(practiceWorld, plotId);
+        int cX = center.getBlockX();
+        int cZ = center.getBlockZ();
+
+        // 1. Rimuove l'intera isola sostituendola con aria
+        for (int x = -15; x <= 15; x++) {
+            for (int y = 85; y <= 125; y++) {
+                for (int z = -15; z <= 15; z++) {
+                    practiceWorld.getBlockAt(cX + x, y, cZ + z).setType(Material.AIR);
+                }
+            }
+        }
+
+        // 2. Rimuove i 4 NPC di quell'isola specifica
+        net.citizensnpcs.api.npc.NPCRegistry registry = net.citizensnpcs.api.CitizensAPI.getNPCRegistry();
+        java.util.Iterator<net.citizensnpcs.api.npc.NPC> it = registry.iterator();
+        while (it.hasNext()) {
+            net.citizensnpcs.api.npc.NPC npc = it.next();
+            if (npc.isSpawned() && npc.getStoredLocation().getWorld().equals(practiceWorld)) {
+                if (npc.getStoredLocation().distanceSquared(center) < 400) {
+                    npc.destroy();
+                }
+            }
+        }
+
+        // 3. Libera l'ID in modo che il prossimo giocatore possa occuparlo
+        plugin.getPlotManager().removePlot(player);
     }
 }

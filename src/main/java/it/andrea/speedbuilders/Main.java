@@ -12,7 +12,8 @@ public class Main extends JavaPlugin {
     private Database database;
     private HologramManager hologramManager;
     private MobManager mobManager;
-    private PlotManager plotManager; // <-- NUOVO SISTEMA PLOT
+    private PlotManager plotManager;
+    private UIManager uiManager;
 
     // Dichiarazione dei file custom
     private FileConfiguration fearConfig;
@@ -89,6 +90,7 @@ public class Main extends JavaPlugin {
         this.hologramManager = new HologramManager(this);
         this.gameManager = new GameManager(this);
         this.mobManager = new MobManager(this);
+        this.uiManager = new UIManager(this);
 
         // Registra i comandi
         Commands cmds = new Commands(this);
@@ -128,7 +130,8 @@ public class Main extends JavaPlugin {
     public Database getDatabase() { return database; }
     public HologramManager getHologramManager() { return hologramManager; }
     public MobManager getMobManager() { return mobManager; }
-    public PlotManager getPlotManager() { return plotManager; } // <-- GETTER PLOT
+    public PlotManager getPlotManager() { return plotManager; }
+    public UIManager getUIManager() { return uiManager; }
 
     public FileConfiguration getFearConfig() { return fearConfig; }
     public FileConfiguration getMineplexConfig() { return mineplexConfig; }

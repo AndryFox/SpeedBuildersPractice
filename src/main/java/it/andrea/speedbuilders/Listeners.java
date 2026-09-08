@@ -135,25 +135,16 @@ public class Listeners implements Listener {
         org.bukkit.entity.Player player = event.getPlayer();
         GameManager gm = plugin.getGameManager();
 
+        // NOVITÀ: Radere al suolo l'isola e rimuovere gli NPC se si disconnette mentre è nell'arena
+        if (player.getWorld().getName().equals("practice")) {
+            gm.clearIsland(player);
+        }
+
         gm.resetPlayer(player);
         plugin.getConfig().set("players." + player.getUniqueId() + ".use_custom_floor", false);
         plugin.saveConfig();
 
         plugin.getHologramManager().deleteArenaHologram();
-
-        org.bukkit.World w = Bukkit.getWorld("practice");
-        if (w != null) {
-            int plotId = plugin.getPlotManager().getPlot(player);
-            Location centerLoc = plugin.getPlotManager().getPlotCenter(w, plotId);
-            int cX = centerLoc.getBlockX(), cZ = centerLoc.getBlockZ();
-            for (int x = -3; x <= 3; x++) {
-                for (int z = -3; z <= 3; z++) {
-                    org.bukkit.block.Block b = w.getBlockAt(cX + x, 100, cZ + z);
-                    b.setType(Material.GRASS);
-                    b.setData((byte) 0);
-                }
-            }
-        }
     }
 
     @EventHandler

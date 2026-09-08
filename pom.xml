@@ -24,6 +24,12 @@
             <id>spigot-repo</id>
             <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
         </repository>
+
+        <!-- Repository Ufficiale Citizens Aggiornata -->
+        <repository>
+            <id>citizens-repo</id>
+            <url>https://maven.citizensnpcs.co/repo</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -33,25 +39,30 @@
             <version>2.4.9</version>
             <scope>provided</scope>
         </dependency>
-
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
             <version>1.12.2-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
-
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <version>42.7.3</version>
             <scope>compile</scope>
         </dependency>
+
+        <!-- Dipendenza leggerissima: Solo le API di Citizens -->
+        <dependency>
+            <groupId>net.citizensnpcs</groupId>
+            <artifactId>citizensapi</artifactId>
+            <version>2.0.22-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <!-- Maven Compiler -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -61,8 +72,6 @@
                     <target>8</target>
                 </configuration>
             </plugin>
-
-            <!-- Maven Shade Plugin (Esporta il file completo con Supabase nel server) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -75,7 +84,6 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <!-- Percorso corretto della tua cartella plugins -->
                             <outputFile>C:\Users\liron\Desktop\Minecraft\Server SpeedBuilders Practice\plugins\SpeedBuildersPractice.jar</outputFile>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
@@ -86,5 +94,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>
