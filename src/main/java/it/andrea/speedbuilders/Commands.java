@@ -17,6 +17,15 @@ public class Commands implements CommandExecutor {
         this.plugin = plugin;
     }
 
+    private int getPing(Player player) {
+        try {
+            Object entityPlayer = player.getClass().getMethod("getHandle").invoke(player);
+            return entityPlayer.getClass().getField("ping").getInt(entityPlayer);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) return true;
@@ -155,7 +164,8 @@ public class Commands implements CommandExecutor {
                 player.teleport(new Location(practiceWorld, cX + 0.5, 101, cZ + 7.5, 180f, 0f));
             }
 
-            player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+            // Mettilo in Creativa invece che Survival
+            player.setGameMode(org.bukkit.GameMode.CREATIVE);
             player.getInventory().clear();
 
             plugin.getConfig().set("players." + player.getUniqueId() + ".dj", true);
@@ -164,23 +174,31 @@ public class Commands implements CommandExecutor {
             player.setFlying(false);
 
             player.sendMessage("§aSei entrato nell'arena! Usa l'NPC per scegliere una mappa.");
+
+            // AGGIORNA LA SCOREBOARD SUBITO ALL'INGRESSO
+            plugin.getUIManager().updateScoreboard(player);
+
             return true;
         }
 
-        if (cmdName.equals("lobby")) {
-            // NOVITÀ: Distrugge l'isola e libera il plot prima di mandarlo alla lobby!
+        if (cmdName.equals("lobby") || cmdName.equals("l") || cmdName.equals("leave")) {
+            // Se si trova nell'arena, distrugge tutto
             if (player.getWorld().getName().equals("practice")) {
-                gm.clearIsland(player);
-                gm.resetPlayer(player);
+                plugin.getArenaManager().clearIsland(player);
+                plugin.getGameManager().resetPlayer(player);
+                plugin.getHologramManager().deleteArenaHologram(); // Rimuove l'ologramma!
             }
 
+            // Teletrasporto
             if (plugin.getConfig().contains("locations.lobby")) {
-                plugin.getUIManager().updateLobbyScoreboard(player);
                 player.teleport((Location) plugin.getConfig().get("locations.lobby"));
                 player.sendMessage("§aTeletrasportato alla Lobby!");
             } else {
                 player.sendMessage("§cLa lobby non è stata impostata. Usa /map setlobby");
             }
+
+            // Attiva la Scoreboard della Lobby
+            plugin.getUIManager().updateLobbyScoreboard(player);
             return true;
         }
 
@@ -234,6 +252,93 @@ public class Commands implements CommandExecutor {
                 player.sendMessage("§aIcona di §l" + name + " §aaggiornata con successo!");
             } else {
                 player.sendMessage("§cUsa: /category create <IP> <Nome> oppure /category seticon <Nome>");
+            }
+            return true;
+        }
+
+        // COMANDO PER INVITARE NEL PLOT
+        if (cmdName.equals("add")) {
+            if (args.length != 1) {
+                player.sendMessage("§cUsa: /add <giocatore>");
+                return true;
+            }
+            Player target = Bukkit.getPlayer(args[0]);
+            if (target == null) {
+                player.sendMessage("§cGiocatore non trovato o offline.");
+                return true;
+            }
+            if (target.equals(player)) {
+                player.sendMessage("§cNon puoi invitare te stesso.");
+                return true;
+            }
+            if (!player.getWorld().getName().equals("practice")) {
+                player.sendMessage("§cDevi essere in un'arena per invitare qualcuno.");
+                return true;
+            }
+
+            // Registra l'amico nel PlotManager
+            plugin.getPlotManager().addGuest(player, target);
+            player.sendMessage("§aHai invitato §e" + target.getName() + " §anel tuo plot!");
+            target.sendMessage("§aSei stato invitato nel plot di §e" + player.getName() + "§a!");
+            target.sendMessage("§7Fai §b/p §7per unirti a lui!");
+            return true;
+        }
+
+        // SISTEMA AMICI COLLEGATO AL DATABASE SUPABASE
+        if (cmdName.equals("friends") || cmdName.equals("f")) {
+            if (args.length == 0) {
+                player.sendMessage("§8§m--------------------------------");
+                player.sendMessage("§6§lLista Amici");
+                player.sendMessage("§e/f add <nome> §7- Aggiungi un amico");
+                player.sendMessage("§e/f remove <nome> §7- Rimuovi un amico");
+                player.sendMessage("§e/f list §7- Lista amici");
+                player.sendMessage("§8§m--------------------------------");
+                return true;
+            }
+
+            String sub = args[0].toLowerCase();
+
+            if (sub.equals("add") && args.length == 2) {
+                String targetName = args[1];
+                // Esecuzione asincrona per non bloccare il server durante la query al DB
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean success = plugin.getDatabase().addFriend(player.getUniqueId(), targetName);
+                    if (success) player.sendMessage("§aHai aggiunto §e" + targetName + " §aai tuoi amici!");
+                    else player.sendMessage("§cImpossibile aggiungere. L'utente esiste già o non è stato trovato.");
+                });
+            } else if (sub.equals("remove") && args.length == 2) {
+                String targetName = args[1];
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean success = plugin.getDatabase().removeFriend(player.getUniqueId(), targetName);
+                    if (success) player.sendMessage("§cHai rimosso §e" + targetName + " §cdagli amici.");
+                    else player.sendMessage("§cAmico non trovato nella tua lista.");
+                });
+            } else if (sub.equals("list")) {
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    java.util.List<String> friends = plugin.getDatabase().getFriends(player.getUniqueId());
+                    player.sendMessage("§8§m--------------------------------");
+                    player.sendMessage("§6§lI tuoi Amici (" + friends.size() + ")");
+                    for (String f : friends) {
+                        player.sendMessage("§8- §a" + f);
+                    }
+                    player.sendMessage("§8§m--------------------------------");
+                });
+            } else {
+                player.sendMessage("§cUsa /f per vedere i comandi.");
+            }
+            return true;
+        }
+
+        if (cmdName.equals("ping")) {
+            if (args.length == 0) {
+                player.sendMessage("§8[§bPractice§8] §7Il tuo ping: §9" + getPing(player) + "ms");
+            } else {
+                Player target = Bukkit.getPlayer(args[0]);
+                if (target != null) {
+                    player.sendMessage("§8[§bPractice§8] §7Ping di §e" + target.getName() + "§7: §9" + getPing(target) + "ms");
+                } else {
+                    player.sendMessage("§cGiocatore non trovato.");
+                }
             }
             return true;
         }

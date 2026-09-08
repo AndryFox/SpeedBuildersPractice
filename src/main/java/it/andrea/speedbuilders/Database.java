@@ -123,4 +123,65 @@ public class Database {
         }
         return 0;
     }
+
+    // --- SISTEMA AMICI SUPABASE ---
+
+    public boolean addFriend(java.util.UUID playerUUID, String friendName) {
+        if (!connect()) return false;
+        try {
+            // Controlla se l'amico è già nella lista
+            String checkQuery = "SELECT 1 FROM friends WHERE player_uuid = ? AND LOWER(friend_name) = LOWER(?)";
+            PreparedStatement checkPs = connection.prepareStatement(checkQuery);
+            checkPs.setString(1, playerUUID.toString());
+            checkPs.setString(2, friendName);
+            ResultSet rs = checkPs.executeQuery();
+            if (rs.next()) return false; // L'amico esiste già
+
+            // Inserisce il nuovo amico
+            String insertQuery = "INSERT INTO friends (player_uuid, friend_name) VALUES (?, ?)";
+            PreparedStatement insertPs = connection.prepareStatement(insertQuery);
+            insertPs.setString(1, playerUUID.toString());
+            insertPs.setString(2, friendName);
+            insertPs.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public boolean removeFriend(java.util.UUID playerUUID, String friendName) {
+        if (!connect()) return false;
+        try {
+            // Elimina l'amico e controlla quante righe sono state modificate
+            String deleteQuery = "DELETE FROM friends WHERE player_uuid = ? AND LOWER(friend_name) = LOWER(?)";
+            PreparedStatement ps = connection.prepareStatement(deleteQuery);
+            ps.setString(1, playerUUID.toString());
+            ps.setString(2, friendName);
+            int rowsAffected = ps.executeUpdate();
+            return rowsAffected > 0; // Ritorna true solo se ha eliminato qualcuno con successo
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public java.util.List<String> getFriends(java.util.UUID playerUUID) {
+        java.util.List<String> friends = new java.util.ArrayList<>();
+        if (!connect()) return friends;
+        try {
+            // Estrae tutta la lista amici per quel giocatore
+            String query = "SELECT friend_name FROM friends WHERE player_uuid = ?";
+            PreparedStatement ps = connection.prepareStatement(query);
+            ps.setString(1, playerUUID.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                friends.add(rs.getString("friend_name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return friends;
+    }
+
 }

@@ -80,28 +80,37 @@ public class UIManager {
 
         // --- NUOVO ORDINE DELLA SCOREBOARD ---
 
-        // 1. Stato e Modalità in cima
-        obj.getScore("§1").setScore(12);
+        // Calcolo automatico del Playtime (Play_One_Tick / 20 = Secondi)
+        long ticks = player.getStatistic(org.bukkit.Statistic.PLAY_ONE_TICK);
+        long totalMins = (ticks / 20) / 60;
+        long hours = totalMins / 60;
+        long mins = totalMins % 60;
+        String playtimeStr = hours + "h " + mins + "m";
+
+        // 1. Playtime, Stato e Modalità in cima
+        obj.getScore("§1").setScore(14);
+        obj.getScore("§6Playtime: §a" + playtimeStr).setScore(13);
+        obj.getScore("§2").setScore(12);
         obj.getScore("§6Stato: §6" + stateFormat).setScore(11);
         obj.getScore("§6Modalità: §d" + timerMode).setScore(10);
 
-        obj.getScore("§2").setScore(9);
+        obj.getScore("§3").setScore(9);
 
         // Legge la modalità attuale del giocatore
         String currentGamemode = player.getGameMode() == org.bukkit.GameMode.CREATIVE ? "§bCreativa" : "§aSopravvivenza";
 
-        // 2. Gamemode, Build, Server e Record Personale (attaccato)
+        // 2. Gamemode, Build, Server e Record Personale
         obj.getScore("§6Gamemode: " + currentGamemode).setScore(8);
         obj.getScore("§6Build: §a" + bName).setScore(7);
         obj.getScore("§6Server: §e" + cat).setScore(6);
         obj.getScore("§6Record Personale: §a" + prStr).setScore(5);
 
-        obj.getScore("§3").setScore(4);
+        obj.getScore("§4").setScore(4);
 
         // 3. World Record in fondo
         obj.getScore("§6Record WR: §a" + wrStr).setScore(3);
 
-        obj.getScore("§4").setScore(2);
+        obj.getScore("§5").setScore(2);
         obj.getScore("§6sbpractice.falix.gg").setScore(1);
 
         player.setScoreboard(board);

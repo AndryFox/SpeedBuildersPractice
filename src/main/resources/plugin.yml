@@ -16,7 +16,7 @@ commands:
     description: Alias per practice
   lobby:
     description: Torna alla lobby
-    aliases: [ l ]
+    aliases: [l, leave]
   fly:
     description: Attiva o disattiva il volo
   dj:
@@ -27,3 +27,10 @@ commands:
     description: Scansiona tutte le build di Mineplex nel raggio
   category:
     description: Seleziona la categoria di build che vuoi
+  add:
+    description: Invita un amico nel tuo plot
+  friends:
+    description: Gestisci i tuoi amici
+    aliases: [ f ]
+  ping:
+    description: Guarda il tuo ping

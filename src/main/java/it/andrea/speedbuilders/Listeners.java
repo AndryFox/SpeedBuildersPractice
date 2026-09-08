@@ -22,10 +22,95 @@ import java.util.List;
 
 public class Listeners implements Listener {
 
+    public static final java.util.HashMap<java.util.UUID, String> playerPrefixes = new java.util.HashMap<>();
     private final Main plugin;
 
     public Listeners(Main plugin) {
         this.plugin = plugin;
+        startSpectatorTask();
+        startTablistTask();
+    }
+
+    private void startTablistTask() {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    try {
+                        // Legge il ping tramite NMS per la 1.12.2
+                        int ping = 0;
+                        try {
+                            Object entityPlayer = p.getClass().getMethod("getHandle").invoke(p);
+                            ping = entityPlayer.getClass().getField("ping").getInt(entityPlayer);
+                        } catch (Exception ignored) {}
+
+                        Class<?> chatSerializer = Class.forName("net.minecraft.server.v1_12_R1.IChatBaseComponent$ChatSerializer");
+                        Object headerObj = chatSerializer.getMethod("a", String.class).invoke(null, "{\"text\": \"\\n§e§lSpeedbuilders Practice\\n§fMap by §bAndryFox_14\\n\"}");
+                        Object footerObj = chatSerializer.getMethod("a", String.class).invoke(null, "{\"text\": \"\\n§9Ping: " + ping + "ms\\n\\n§6sbpractice.falix.gg\\n\"}");
+
+                        Object packet = Class.forName("net.minecraft.server.v1_12_R1.PacketPlayOutPlayerListHeaderFooter").newInstance();
+                        java.lang.reflect.Field headerField = packet.getClass().getDeclaredField("a");
+                        headerField.setAccessible(true);
+                        headerField.set(packet, headerObj);
+                        java.lang.reflect.Field footerField = packet.getClass().getDeclaredField("b");
+                        footerField.setAccessible(true);
+                        footerField.set(packet, footerObj);
+
+                        Object handle = p.getClass().getMethod("getHandle").invoke(p);
+                        Object connection = handle.getClass().getField("playerConnection").get(handle);
+                        connection.getClass().getMethod("sendPacket", Class.forName("net.minecraft.server.v1_12_R1.Packet")).invoke(connection, packet);
+                    } catch (Exception ignored) {}
+                }
+            }
+        }.runTaskTimerAsynchronously(plugin, 20L, 40L); // Si aggiorna ogni 2 secondi
+    }
+
+    private void startSpectatorTask() {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                World w = Bukkit.getWorld("practice");
+                if (w == null) return;
+
+                for (Player p : w.getPlayers()) {
+                    if (plugin.getGameManager().isLobbyWorld(w)) continue;
+
+                    // Controlla dove si trova fisicamente e dove ha i permessi
+                    int currentPlotId = plugin.getPlotManager().getPlotAt(p.getLocation());
+                    int allowedPlotId = plugin.getPlotManager().getPlot(p); // Plot suo o dell'amico che lo ha invitato
+
+                    if (currentPlotId == -1) {
+                        // ZONA 1: WILDERNESS (Nel vuoto tra le isole)
+                        if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+                            p.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                        }
+                        // Dà la fly per viaggiare senza cadere nel vuoto
+                        if (!p.getAllowFlight()) p.setAllowFlight(true);
+                        if (!p.isFlying()) p.setFlying(true);
+
+                    } else if (currentPlotId == allowedPlotId) {
+                        // ZONA 2: PLOT AUTORIZZATO (Il suo, o quello dove è stato invitato)
+                        if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR || p.isFlying()) {
+                            p.setGameMode(org.bukkit.GameMode.SURVIVAL); // (Successivamente metteremo Creativa qui)
+                            p.setFlying(false); // Tocca terra
+
+                            // Ripristina il Double Jump (DJ) solo se lo aveva attivato
+                            if (plugin.getConfig().getBoolean("players." + p.getUniqueId() + ".dj", false)) {
+                                p.setAllowFlight(true);
+                            } else {
+                                p.setAllowFlight(false);
+                            }
+                        }
+                    } else {
+                        // ZONA 3: PLOT ALTRUI (Non è stato invitato)
+                        if (p.getGameMode() != org.bukkit.GameMode.SPECTATOR) {
+                            p.setGameMode(org.bukkit.GameMode.SPECTATOR);
+                            p.sendMessage("§cNon sei autorizzato in questo plot! (Spettatore)");
+                        }
+                    }
+                }
+            }
+        }.runTaskTimer(plugin, 20L, 10L); // Esegue il check ogni mezzo secondo
     }
 
     @EventHandler
@@ -92,39 +177,36 @@ public class Listeners implements Listener {
 
                         player.setLevel(finalWrCount);
 
+                        // 1. Genera il prefisso della Chat SENZA grassetto (§l)
+                        String chatPrefix = finalColor + finalTag + " §8| " + finalColor;
+                        if (player.getName().equalsIgnoreCase("AndryFox_14")) {
+                            chatPrefix = "§bElite Fox §8| §b";
+                        }
+
+                        // 2. Prepara il testo per la Tablist (aggiunge Admin se necessario)
+                        String tabPrefix = chatPrefix;
+                        if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
+                            tabPrefix = "§cAdmin §8- " + tabPrefix;
+                        }
+
+                        // 3. Imposta la Tablist (bypassa il limite di 16 caratteri!)
+                        player.setPlayerListName(tabPrefix + player.getName());
+
+                        // 4. Salva il prefisso in RAM per quando il player scriverà in chat
+                        playerPrefixes.put(player.getUniqueId(), chatPrefix);
+
+                        // 5. Team Scoreboard (solo per il nome sopra la testa)
                         org.bukkit.scoreboard.Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
                         org.bukkit.scoreboard.Team team = board.getTeam(player.getName());
                         if (team == null) {
                             team = board.registerNewTeam(player.getName());
                         }
 
-                        String prefix = finalColor + "[" + finalTag + "] §f";
-                        if (prefix.length() > 16) { prefix = prefix.substring(0, 16); }
-
-                        team.setPrefix(prefix);
+                        String teamPrefix = finalColor + finalTag + " ";
+                        if (teamPrefix.length() > 16) { teamPrefix = teamPrefix.substring(0, 16); }
+                        team.setPrefix(teamPrefix);
                         team.addEntry(player.getName());
 
-                        try {
-                            Class<?> chatSerializer = Class.forName("net.minecraft.server.v1_12_R1.IChatBaseComponent$ChatSerializer");
-                            Object headerObj = chatSerializer.getMethod("a", String.class).invoke(null, "{\"text\": \"\\n§e§lSpeedbuilders Practice\\n§fMap by §bAndryFox_14\\n\"}");
-                            Object footerObj = chatSerializer.getMethod("a", String.class).invoke(null, "{\"text\": \"\\n§7Usa §b/p §7per iniziare ad allenarti\\n\"}");
-
-                            Object packet = Class.forName("net.minecraft.server.v1_12_R1.PacketPlayOutPlayerListHeaderFooter").newInstance();
-
-                            java.lang.reflect.Field headerField = packet.getClass().getDeclaredField("a");
-                            headerField.setAccessible(true);
-                            headerField.set(packet, headerObj);
-
-                            java.lang.reflect.Field footerField = packet.getClass().getDeclaredField("b");
-                            footerField.setAccessible(true);
-                            footerField.set(packet, footerObj);
-
-                            Object handle = player.getClass().getMethod("getHandle").invoke(player);
-                            Object connection = handle.getClass().getField("playerConnection").get(handle);
-                            connection.getClass().getMethod("sendPacket", Class.forName("net.minecraft.server.v1_12_R1.Packet")).invoke(connection, packet);
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
                     }
                 });
             }
@@ -190,7 +272,7 @@ public class Listeners implements Listener {
         } else if (!state.equals("PLAYING")) {
             if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) return;
             event.setCancelled(true);
-            player.sendMessage(state.equals("COUNTDOWN") ? "§cAttendi la fine del countdown!" : "§cClicca sul pavimento nero per iniziare!");
+            player.sendMessage(state.equals("COUNTDOWN") ? "§cAttendi la fine del countdown!" : "§cClicca sul pavimento per iniziare!");
             return;
         }
 
@@ -258,6 +340,12 @@ public class Listeners implements Listener {
         String rawName = clicked.getCustomName();
         if (rawName == null) rawName = clicked.getName();
         if (rawName == null) return;
+        // Blocco di sicurezza: Solo il proprietario può cliccare gli NPC!
+        if (!plugin.getPlotManager().isOwner(event.getPlayer())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§cSolo il proprietario del plot può usare i menu!");
+            return;
+        }
 
         String npcName = org.bukkit.ChatColor.stripColor(rawName).toLowerCase();
 
@@ -547,10 +635,8 @@ public class Listeners implements Listener {
                     player.setGameMode(org.bukkit.GameMode.SURVIVAL);
                     player.setAllowFlight(true);
                     player.setFlying(false);
-                    player.sendMessage("§e§l[!] §eModalità Giocatore (Sopravvivenza) attivata!");
                 } else {
                     player.setGameMode(org.bukkit.GameMode.CREATIVE);
-                    player.sendMessage("§a§l[!] §aModalità Costruttore (Creativa) attivata!");
                 }
 
                 // AGGIORNA LA SCOREBOARD ALL'ISTANTE
@@ -598,13 +684,14 @@ public class Listeners implements Listener {
         if (plugin.getGameManager().isAwaitingSearch(event.getPlayer())) return;
 
         Player player = event.getPlayer();
-        String prefix = "§7Giocatore";
+
+        String rankPrefix = playerPrefixes.getOrDefault(player.getUniqueId(), "§7Newbie §8| §7");
 
         if (player.hasPermission("speedbuilders.admin") || player.isOp()) {
-            prefix = "§cAdmin";
+            event.setFormat("§cOwner §8- " + rankPrefix + player.getName() + "§8: §f%2$s");
+        } else {
+            event.setFormat(rankPrefix + player.getName() + "§8: §7%2$s");
         }
-
-        event.setFormat(prefix + " §8| §f" + player.getName() + "§8: §7" + event.getMessage());
     }
 
     @EventHandler
@@ -620,6 +707,9 @@ public class Listeners implements Listener {
 
         // Se sta colpendo il pavimento base (altezza 100)
         if (b.getY() == 100) {
+            // Disabilita il reset col clic sinistro se è in modalità Zen (COUNTDOWN)
+            if (plugin.getGameManager().getTimerMode(player).equals("COUNTDOWN")) return;
+
             GameManager gm = plugin.getGameManager();
             int buildId = gm.getCurrentBuild(player);
             if (buildId != -1) {
@@ -633,8 +723,14 @@ public class Listeners implements Listener {
 
                 // 3. Rimette in attesa del primo blocco
                 gm.setState(player, "WAITING_FIRST_BLOCK");
-                player.sendMessage("§e§l[!] §eArena ripulita! Il timer partirà al primo blocco.");
             }
+        }
+    }
+
+    @EventHandler
+    public void onPlayerDropItem(org.bukkit.event.player.PlayerDropItemEvent event) {
+        if (event.getPlayer().getWorld().getName().equals("practice")) {
+            event.setCancelled(true);
         }
     }
 

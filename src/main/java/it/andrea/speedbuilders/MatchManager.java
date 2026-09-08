@@ -215,13 +215,14 @@ public class MatchManager {
             countdownTasks.get(player).cancel();
         }
 
-        // NUOVO: SE E' IN CREATIVA, NESSUN COUNTDOWN!
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+        // Se è in modalità Classica (FIRST_BLOCK) E in Creativa, aspetta il primo blocco.
+        // Altrimenti (se è Zen), va dritto al countdown ignorando la gamemode!
+        if (mode.equals("FIRST_BLOCK") && player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
             gm.clearPlot(player);
             if (buildId != -1) giveBuildItems(player, buildId);
             gm.setState(player, "WAITING_FIRST_BLOCK");
             player.sendTitle("", "§7(Creativa: Piazza per avviare)", 0, 40, 10);
-            return; // Ferma il metodo qui, non fa il countdown
+            return;
         }
 
         if (mode.equals("COUNTDOWN")) {
@@ -236,15 +237,13 @@ public class MatchManager {
                         return;
                     }
                     if (count > 0) {
-                        player.sendTitle("", "§a" + count, 0, 25, 0);
                         int pitchIndex = Math.max(0, Math.min(5, 6 - count));
-                        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_PLING, 1f, scale[pitchIndex]);
+                        broadcastToPlot(player, null, "", "§a" + count, 0, 25, 0, Sound.BLOCK_NOTE_PLING, scale[pitchIndex]);
                         count--;
                     } else {
-                        player.playSound(player.getLocation(), Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
+                        broadcastToPlot(player, null, "", "§cTempo esaurito!", 0, 20, 10, Sound.BLOCK_WOOD_BREAK, 1f);
                         gm.clearPlot(player);
                         if (buildId != -1) giveBuildItems(player, buildId);
-                        player.sendTitle("", "§cTempo esaurito!", 0, 20, 10);
                         gm.setState(player, "PLAYING");
                         startTimer(player);
                         this.cancel();
@@ -253,11 +252,10 @@ public class MatchManager {
             }.runTaskTimer(plugin, 0L, 20L);
             countdownTasks.put(player, task);
         } else {
-            player.playSound(player.getLocation(), Sound.BLOCK_WOOD_BREAK, 1.5f, 1f);
             gm.clearPlot(player);
             if (buildId != -1) giveBuildItems(player, buildId);
             gm.setState(player, "WAITING_FIRST_BLOCK");
-            player.sendTitle("", "§7(Il timer parte al primo blocco)", 0, 40, 10);
+            broadcastToPlot(player, null, "", "§7(Il timer parte al primo blocco)", 0, 40, 10, Sound.BLOCK_WOOD_BREAK, 1f);
         }
     }
 
@@ -299,7 +297,7 @@ public class MatchManager {
                 long elapsed = System.currentTimeMillis() - activeTimers.get(player);
                 String recordText = finalBest > 0 ? String.format("§6§lRecord: §f%.3f s", finalBest / 1000.0) : "§6§lRecord: §7Nessuno";
                 String timeText = String.format("§e§lTempo: §f%.3f s §8| %s", elapsed / 1000.0, recordText);
-                player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(timeText));
+                broadcastToPlot(player, timeText, null, null, 0, 0, 0, null, 1f);
             }
         }.runTaskTimer(plugin, 0L, 1L);
         actionBars.put(player, task);
@@ -335,8 +333,11 @@ public class MatchManager {
         player.sendTitle("§a" + seconds + "s", "§7" + player.getName() + " | " + bName, 10, 40, 10);
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
 
-        // Messaggio in chat visibile SOLO per te
-        player.sendMessage("§7Hai completato la build in " + seconds + "s");
+        // Titolo e suono trasmessi a tutti i presenti!
+        broadcastToPlot(player, null, "§a" + seconds + "s", "§7" + player.getName() + " | " + bName, 10, 40, 10, Sound.ENTITY_PLAYER_LEVELUP, 1f);
+
+        // Messaggio in chat visibile SOLO per te in grigio e grigio chiaro
+        player.sendMessage("§8Hai completato la build §7" + bName + " §8(§7" + buildId + "§8) in §7" + seconds + "s");
 
         if (buildId != -1) {
             long currentWR = -1;
@@ -655,7 +656,7 @@ public class MatchManager {
         }
 
         if (errorsCount == 0) {
-            player.sendMessage("§aNessun errore! Devi solo premere il pulsante mancante (se c'è).");
+            player.sendMessage("§aNessun errore.");
         } else {
             player.sendMessage("§cMostrando " + errorsCount + " errori per 5 secondi!");
             player.sendMessage("§8- §cBlocchi rossi§7: Sono da rimuovere o sostituire.");
@@ -678,4 +679,17 @@ public class MatchManager {
             }.runTaskLater(plugin, 100L);
         }
     }
+
+    // NUOVO: Trasmette titoli, actionbar e suoni a tutti i giocatori nel plot
+    public void broadcastToPlot(Player host, String actionbar, String title, String sub, int in, int stay, int out, Sound sound, float pitch) {
+        int targetPlot = plugin.getPlotManager().getPlot(host);
+        for (Player p : host.getWorld().getPlayers()) {
+            if (plugin.getPlotManager().getPlot(p) == targetPlot) {
+                if (actionbar != null) p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(actionbar));
+                if (title != null || sub != null) p.sendTitle(title != null ? title : "", sub != null ? sub : "", in, stay, out);
+                if (sound != null) p.playSound(p.getLocation(), sound, 1f, pitch);
+            }
+        }
+    }
+
 }

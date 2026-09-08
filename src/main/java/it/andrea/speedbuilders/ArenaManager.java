@@ -176,25 +176,28 @@ public class ArenaManager {
             }
         }
 
-        // 2. Rimuove i 4 NPC di quell'isola specifica (risolto il ConcurrentModificationException)
-        net.citizensnpcs.api.npc.NPCRegistry registry = net.citizensnpcs.api.CitizensAPI.getNPCRegistry();
-        java.util.List<net.citizensnpcs.api.npc.NPC> toDestroy = new java.util.ArrayList<>();
+        // 2. Rimozione NPC blindata
+        try {
+            net.citizensnpcs.api.npc.NPCRegistry registry = net.citizensnpcs.api.CitizensAPI.getNPCRegistry();
+            java.util.List<net.citizensnpcs.api.npc.NPC> toDestroy = new java.util.ArrayList<>();
 
-        // Prima li cerchiamo e li mettiamo in una lista d'attesa
-        for (net.citizensnpcs.api.npc.NPC npc : registry) {
-            if (npc.isSpawned() && npc.getStoredLocation().getWorld().equals(practiceWorld)) {
-                if (npc.getStoredLocation().distanceSquared(center) < 400) {
-                    toDestroy.add(npc);
+            for (net.citizensnpcs.api.npc.NPC npc : registry) {
+                if (npc.isSpawned() && npc.getStoredLocation().getWorld().equals(practiceWorld)) {
+                    if (npc.getStoredLocation().distanceSquared(center) < 400) {
+                        toDestroy.add(npc);
+                    }
                 }
             }
-        }
 
-        // Poi li distruggiamo tranquillamente
-        for (net.citizensnpcs.api.npc.NPC npc : toDestroy) {
-            npc.destroy();
+            for (net.citizensnpcs.api.npc.NPC npc : toDestroy) {
+                npc.destroy();
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Errore minore con gli NPC, ma il plot verra' liberato lo stesso!");
+        } finally {
+            // 3. Il blocco 'finally' assicura che il plot venga SEMPRE restituito alla coda!
+            plugin.getPlotManager().removePlot(player);
         }
-
-        plugin.getPlotManager().removePlot(player);
     }
 
     @SuppressWarnings("deprecation")
