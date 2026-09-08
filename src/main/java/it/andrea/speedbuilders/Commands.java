@@ -175,6 +175,7 @@ public class Commands implements CommandExecutor {
             }
 
             if (plugin.getConfig().contains("locations.lobby")) {
+                plugin.getUIManager().updateLobbyScoreboard(player);
                 player.teleport((Location) plugin.getConfig().get("locations.lobby"));
                 player.sendMessage("§aTeletrasportato alla Lobby!");
             } else {

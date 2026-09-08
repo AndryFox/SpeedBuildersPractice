@@ -31,6 +31,7 @@ public class Listeners implements Listener {
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        plugin.getUIManager().updateLobbyScoreboard(player);
         plugin.getGameManager().setState(player, "IDLE");
         player.getInventory().clear();
         player.setGameMode(org.bukkit.GameMode.SURVIVAL);
@@ -551,6 +552,9 @@ public class Listeners implements Listener {
                     player.setGameMode(org.bukkit.GameMode.CREATIVE);
                     player.sendMessage("§a§l[!] §aModalità Costruttore (Creativa) attivata!");
                 }
+
+                // AGGIORNA LA SCOREBOARD ALL'ISTANTE
+                plugin.getUIManager().updateScoreboard(player);
             }
             else if (line1.equalsIgnoreCase("Replay")) {
                 event.setCancelled(true);
@@ -559,7 +563,7 @@ public class Listeners implements Listener {
                 if (buildId != -1) {
                     gm.forceReset(player);
                     gm.loadBuild(player, buildId, gm.getCurrentCategory(player));
-                    gm.readyBuild(player);
+                    gm.startActualReady(player); // Salta il nome, va dritto al countdown (o parte subito in creativa)!
                 } else {
                     player.sendMessage("§cDevi prima caricare una build con /map load <id> o dall'NPC!");
                 }
@@ -602,4 +606,36 @@ public class Listeners implements Listener {
 
         event.setFormat(prefix + " §8| §f" + player.getName() + "§8: §7" + event.getMessage());
     }
+
+    @EventHandler
+    public void onCreativeFloorClick(org.bukkit.event.player.PlayerInteractEvent event) {
+        // Funziona solo col tasto sinistro e solo in Creativa
+        if (event.getAction() != org.bukkit.event.block.Action.LEFT_CLICK_BLOCK) return;
+        Player player = event.getPlayer();
+        if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) return;
+
+        Block b = event.getClickedBlock();
+        if (b == null) return;
+        if (!b.getWorld().getName().equals("practice")) return;
+
+        // Se sta colpendo il pavimento base (altezza 100)
+        if (b.getY() == 100) {
+            GameManager gm = plugin.getGameManager();
+            int buildId = gm.getCurrentBuild(player);
+            if (buildId != -1) {
+                event.setCancelled(true); // Evita di distruggere il blocco di pavimento
+
+                // 1. Ferma i timer e pulisce l'area (aria)
+                gm.forceReset(player);
+
+                // 2. Dà gli oggetti senza caricare la struttura!
+                plugin.getMatchManager().giveBuildItems(player, buildId);
+
+                // 3. Rimette in attesa del primo blocco
+                gm.setState(player, "WAITING_FIRST_BLOCK");
+                player.sendMessage("§e§l[!] §eArena ripulita! Il timer partirà al primo blocco.");
+            }
+        }
+    }
+
 }

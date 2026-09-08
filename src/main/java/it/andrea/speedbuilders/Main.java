@@ -14,6 +14,9 @@ public class Main extends JavaPlugin {
     private MobManager mobManager;
     private PlotManager plotManager;
     private UIManager uiManager;
+    private ArenaManager arenaManager;
+    private MenuManager menuManager;
+    private MatchManager matchManager;
 
     // Dichiarazione dei file custom
     private FileConfiguration fearConfig;
@@ -86,11 +89,14 @@ public class Main extends JavaPlugin {
             }
         }
 
-        this.plotManager = new PlotManager(this); // <-- INIZIALIZZAZIONE PLOT
+        this.plotManager = new PlotManager(this);
+        this.arenaManager = new ArenaManager(this);
         this.hologramManager = new HologramManager(this);
         this.gameManager = new GameManager(this);
         this.mobManager = new MobManager(this);
         this.uiManager = new UIManager(this);
+        this.menuManager = new MenuManager(this);
+        this.matchManager = new MatchManager(this);
 
         // Registra i comandi
         Commands cmds = new Commands(this);
@@ -132,6 +138,9 @@ public class Main extends JavaPlugin {
     public MobManager getMobManager() { return mobManager; }
     public PlotManager getPlotManager() { return plotManager; }
     public UIManager getUIManager() { return uiManager; }
+    public ArenaManager getArenaManager() { return arenaManager; }
+    public MenuManager getMenuManager() { return menuManager; }
+    public MatchManager getMatchManager() { return matchManager; }
 
     public FileConfiguration getFearConfig() { return fearConfig; }
     public FileConfiguration getMineplexConfig() { return mineplexConfig; }
